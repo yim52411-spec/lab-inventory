@@ -1,0 +1,25 @@
+# 实验室物料库存管理系统 - 后端依赖
+
+# Web框架
+flask>=2.2.5,<3.0.0
+flask-cors>=4.0.0
+flask-jwt-extended>=4.5.3
+# 数据库
+flask-sqlalchemy>=3.1.1
+flask-migrate>=4.0.5
+# 数据库驱动
+# SQLite (内置，无需安装)
+pymysql>=1.1.0
+# 密码加密
+werkzeug>=3.0.1
+# 邮件发送
+flask-mail>=0.9.1
+# 定时任务
+flask-apscheduler>=1.13.0
+# 环境变量
+python-dotenv>=1.0.0
+# 其他工具
+click>=8.1.7
+gunicorn>=21.2.0
+gevent==25.9.1
+openpyxl>=3.1.2

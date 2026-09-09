@@ -1,0 +1,14 @@
+.env
+.DS_Store
+
+backend/logs/
+backend/uploads/
+backend/backups/
+database-backups/
+
+ngrok.log
+*.pid
+__pycache__/
+*.py[cod]
+*.log
+*.backup

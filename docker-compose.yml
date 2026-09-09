@@ -1,0 +1,88 @@
+# Docker Compose 配置文件
+# 一键部署实验室物料库存管理系统
+
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: lab_inventory_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: lab_inventory
+      MYSQL_USER: lab_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置 MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - lab_network
+
+  # Redis 缓存（可选，用于会话存储）
+  redis:
+    image: redis:7-alpine
+    container_name: lab_inventory_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - lab_network
+
+  # 后端 API 服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lab_inventory_backend
+    restart: always
+    environment:
+      - FLASK_CONFIG=production
+      - DATABASE_URL=mysql+pymysql://lab_user:${MYSQL_PASSWORD}@mysql:3306/lab_inventory?charset=utf8mb4
+      - SECRET_KEY=${SECRET_KEY:?请在 .env 中设置 SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?请在 .env 中设置 JWT_SECRET_KEY}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:?请在 .env 中设置 INITIAL_ADMIN_PASSWORD}
+      - INITIAL_VISITOR_USERNAME=${INITIAL_VISITOR_USERNAME:-visitor}
+      - INITIAL_VISITOR_PASSWORD=${INITIAL_VISITOR_PASSWORD:?请在 .env 中设置 INITIAL_VISITOR_PASSWORD}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - MAIL_SERVER=smtp.gmail.com
+      - MAIL_PORT=587
+      - MAIL_USE_TLS=true
+      - MAIL_USERNAME=your_email@gmail.com
+      - MAIL_PASSWORD=your_email_password
+      - MAIL_DEFAULT_SENDER=your_email@gmail.com
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - lab_network
+
+  # Nginx 反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: lab_inventory_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend:/var/www/lab-inventory:ro
+      - ./backend/uploads:/app/uploads:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend
+    networks:
+      - lab_network
+
+volumes:
+  mysql_data:
+  redis_data:
+  nginx_logs:
+
+networks:
+  lab_network:
+    driver: bridge

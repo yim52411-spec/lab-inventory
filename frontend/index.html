@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实验室物料库存管理系统</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 登录页面 -->
+    <div id="login-page" class="page active">
+        <div class="login-container">
+            <div class="login-box">
+                <div class="login-header">
+                    <i class="fas fa-flask"></i>
+                    <h1>实验室物料库存管理系统</h1>
+                    <p>Lab Material Inventory Management System</p>
+                </div>
+                <form id="login-form" class="login-form">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> 用户名</label>
+                        <input type="text" id="username" placeholder="请输入用户名" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> 密码</label>
+                        <input type="password" id="password" placeholder="请输入密码" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-user-tag"></i> 角色</label>
+                        <select id="role">
+                            <option value="admin">管理员</option>
+                            <option value="visitor">访问者</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">
+                        <i class="fas fa-sign-in-alt"></i> 登录
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主应用页面 -->
+    <div id="main-app" class="page">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-flask"></i>
+                <span>LabInventory</span>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="active" data-page="dashboard">
+                        <a href="#"><i class="fas fa-tachometer-alt"></i> 仪表盘</a>
+                    </li>
+                    <li data-page="inventory">
+                        <a href="#"><i class="fas fa-boxes"></i> 库存管理</a>
+                    </li>
+                    <li data-page="purchase">
+                        <a href="#"><i class="fas fa-shopping-cart"></i> 采购申请</a>
+                    </li>
+                    <li data-page="inout">
+                        <a href="#"><i class="fas fa-exchange-alt"></i> 出入库管理</a>
+                    </li>
+                    <li data-page="borrow">
+                        <a href="#"><i class="fas fa-hand-holding"></i> 借用管理</a>
+                    </li>
+                    <li data-page="history">
+                        <a href="#"><i class="fas fa-history"></i> 历史记录</a>
+                    </li>
+                    <li data-page="alerts" class="admin-only">
+                        <a href="#"><i class="fas fa-bell"></i> 库存预警 <span id="nav-alert-badge" class="badge" style="display:none">0</span></a>
+                    </li>
+                    <li data-page="users" class="admin-only">
+                        <a href="#"><i class="fas fa-users"></i> 用户管理</a>
+                    </li>
+                    <li data-page="settings" class="admin-only">
+                        <a href="#"><i class="fas fa-cog"></i> 系统设置</a>
+                    </li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <div>
+                        <span id="current-user">管理员</span>
+                        <small id="current-role">管理员</small>
+                    </div>
+                </div>
+                <button id="logout-btn" class="btn btn-sm btn-outline">
+                    <i class="fas fa-sign-out-alt"></i> 退出
+                </button>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 顶部导航 -->
+            <header class="top-header">
+                <button class="menu-toggle"><i class="fas fa-bars"></i></button>
+                <div class="header-right">
+                    <div class="notifications" onclick="navigateToPage('alerts')" title="查看库存预警">
+                        <i class="fas fa-bell"></i>
+                        <span id="header-alert-badge" class="badge" style="display:none">0</span>
+                    </div>
+                    <div class="date-time">
+                        <span id="current-date"></span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 仪表盘页面 -->
+            <div id="dashboard-page" class="content-page active">
+                <div class="page-header">
+                    <h2><i class="fas fa-tachometer-alt"></i> 仪表盘</h2>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon bg-blue">
+                            <i class="fas fa-boxes"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>1,256</h3>
+                            <p>总库存物料</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-green">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>1,180</h3>
+                            <p>库存充足</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-orange">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>45</h3>
+                            <p>库存预警</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon bg-red">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>31</h3>
+                            <p>库存不足</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-line"></i> 库存趋势</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="inventory-trend-chart" class="chart-placeholder trend-chart-panel"></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-area"></i> 采购趋势</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="purchase-trend-chart" class="chart-placeholder trend-chart-panel"></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-bell"></i> 预警信息</h3>
+                            <a href="#" class="view-all" onclick="navigateToPage('alerts'); return false;">查看全部</a>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert-list">
+                                <div class="alert-item alert-danger">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    <div class="alert-content">
+                                        <p><strong>乙醇</strong> 库存不足 (剩余: 2瓶)</p>
+                                        <small>2小时前</small>
+                                    </div>
+                                </div>
+                                <div class="alert-item alert-warning">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <div class="alert-content">
+                                        <p><strong>离心管</strong> 库存预警 (剩余: 15个)</p>
+                                        <small>5小时前</small>
+                                    </div>
+                                </div>
+                                <div class="alert-item alert-warning">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <div class="alert-content">
+                                        <p><strong>培养皿</strong> 库存预警 (剩余: 20个)</p>
+                                        <small>1天前</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-clock"></i> 最近活动</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>操作类型</th>
+                                    <th>物料名称</th>
+                                    <th>数量</th>
+                                    <th>操作人</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>2024-01-15 14:30</td>
+                                    <td><span class="badge-type in">入库</span></td>
+                                    <td>乙醇 (分析纯)</td>
+                                    <td>+50瓶</td>
+                                    <td>张三</td>
+                                    <td><span class="status completed">已完成</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2024-01-15 11:20</td>
+                                    <td><span class="badge-type out">出库</span></td>
+                                    <td>离心管 15ml</td>
+                                    <td>-20个</td>
+                                    <td>李四</td>
+                                    <td><span class="status completed">已完成</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2024-01-15 09:15</td>
+                                    <td><span class="badge-type borrow">借用</span></td>
+                                    <td>显微镜</td>
+                                    <td>1台</td>
+                                    <td>王五</td>
+                                    <td><span class="status pending">借用中</span></td>
+                                </tr>
+                                <tr>
+                                    <td>2024-01-14 16:45</td>
+                                    <td><span class="badge-type purchase">采购</span></td>
+                                    <td>培养皿</td>
+                                    <td>200个</td>
+                                    <td>赵六</td>
+                                    <td><span class="status pending">审批中</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 库存管理页面 -->
+            <div id="inventory-page" class="content-page">
+                <div class="page-header">
+                    <h2><i class="fas fa-boxes"></i> 库存管理</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary admin-only" onclick="showModal('add-material-modal')">
+                            <i class="fas fa-plus"></i> 新增物料
+                        </button>
+                        <button class="btn btn-outline admin-only" onclick="document.getElementById('material-import-file').click()">
+                            <i class="fas fa-file-import"></i> Excel导入
+                        </button>
+                        <input type="file" id="material-import-file" accept=".xlsx,.xls,.csv" style="display:none">
+                        <button class="btn btn-outline" onclick="exportData('materials')">
+                            <i class="fas fa-download"></i> 导出
+                        </button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="search-filter">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="material-search" placeholder="搜索物料名称、编号、规格...">
+                            </div>
+                            <select class="filter-select" id="material-category-filter">
+                                <option value="">所有分类</option>
+                            </select>
+                            <select class="filter-select" id="material-status-filter">
+                                <option value="">所有状态</option>
+                                <option value="normal">库存正常</option>
+                                <option value="warning">库存预警</option>
+                                <option value="danger">库存不足</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox"></th>
+                                    <th>物料编号</th>
+                                    <th>物料名称</th>
+                                    <th>分类</th>
+                                    <th>规格</th>
+                                    <th>库存数量</th>
+                                    <th>预警阈值</th>
+                                    <th>存放位置</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>M2024001</td>
+                                    <td>乙醇 (分析纯)</td>
+                                    <td>化学试剂</td>
+                                    <td>500ml/瓶</td>
+                                    <td>2瓶</td>
+                                    <td>10瓶</td>
+                                    <td>A区-01架</td>
+                                    <td><span class="status-badge danger">不足</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon admin-only" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="申请"><i class="fas fa-plus"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>M2024002</td>
+                                    <td>离心管 15ml</td>
+                                    <td>实验耗材</td>
+                                    <td>50个/包</td>
+                                    <td>15个</td>
+                                    <td>20个</td>
+                                    <td>B区-03架</td>
+                                    <td><span class="status-badge warning">预警</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon admin-only" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="申请"><i class="fas fa-plus"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>M2024003</td>
+                                    <td>培养皿</td>
+                                    <td>玻璃器皿</td>
+                                    <td>90mm</td>
+                                    <td>20个</td>
+                                    <td>30个</td>
+                                    <td>C区-02架</td>
+                                    <td><span class="status-badge warning">预警</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon admin-only" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="申请"><i class="fas fa-plus"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>M2024004</td>
+                                    <td>电子天平</td>
+                                    <td>仪器设备</td>
+                                    <td>0.1mg精度</td>
+                                    <td>5台</td>
+                                    <td>2台</td>
+                                    <td>D区-仪器室</td>
+                                    <td><span class="status-badge normal">正常</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon admin-only" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="借用"><i class="fas fa-hand-holding"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>M2024005</td>
+                                    <td>移液器</td>
+                                    <td>仪器设备</td>
+                                    <td>100-1000μl</td>
+                                    <td>8支</td>
+                                    <td>3支</td>
+                                    <td>D区-仪器室</td>
+                                    <td><span class="status-badge normal">正常</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon admin-only" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="借用"><i class="fas fa-hand-holding"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="pagination">
+                            <span>显示 1-5 条，共 1256 条</span>
+                            <div class="page-nav">
+                                <button disabled><i class="fas fa-chevron-left"></i></button>
+                                <button class="active">1</button>
+                                <button>2</button>
+                                <button>3</button>
+                                <span>...</span>
+                                <button>252</button>
+                                <button><i class="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 采购申请页面 -->
+            <div id="purchase-page" class="content-page">
+                <div class="page-header">
+                    <h2><i class="fas fa-shopping-cart"></i> 采购申请</h2>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>提交采购申请</h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="purchase-form" class="form-grid">
+                            <div class="form-group">
+                                <label>物料名称 <span class="required">*</span></label>
+                                <input type="text" id="purchase-name" placeholder="请输入物料名称" required>
+                            </div>
+                            <div class="form-group">
+                                <label>物料分类</label>
+                                <select id="purchase-category" class="category-select">
+                                    <option value="">请选择分类</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>规格型号</label>
+                                <input type="text" id="purchase-spec" placeholder="如: 500ml/瓶">
+                            </div>
+                            <div class="form-group">
+                                <label>申请数量 <span class="required">*</span></label>
+                                <input type="number" id="purchase-quantity" min="1" placeholder="请输入数量" required>
+                            </div>
+                            <div class="form-group">
+                                <label>供应商链接</label>
+                                <input type="url" id="purchase-url" placeholder="https://...">
+                            </div>
+                            <div class="form-group">
+                                <label>预计单价 (元)</label>
+                                <input type="number" id="purchase-price" step="0.01" placeholder="0.00">
+                            </div>
+                            <div class="form-group full-width">
+                                <label>申请理由 <span class="required">*</span></label>
+                                <textarea id="purchase-reason" rows="3" placeholder="请说明采购理由..." required></textarea>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>备注</label>
+                                <textarea id="purchase-remark" rows="2" placeholder="其他备注信息..."></textarea>
+                            </div>
+                            <div class="form-actions full-width">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-paper-plane"></i> 提交申请
+                                </button>
+                                <button type="reset" class="btn btn-outline">重置</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>我的申请记录</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>申请编号</th>
+                                    <th>物料名称</th>
+                                    <th>数量</th>
+                                    <th>申请时间</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>P20240115001</td>
+                                    <td>甲醇 (色谱纯)</td>
+                                    <td>10瓶</td>
+                                    <td>2024-01-15 10:30</td>
+                                    <td><span class="status pending">审批中</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon" title="撤回"><i class="fas fa-undo"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>P20240110002</td>
+                                    <td>滤膜 0.22μm</td>
+                                    <td>5包</td>
+                                    <td>2024-01-10 14:20</td>
+                                    <td><span class="status approved">已通过</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>P20240108003</td>
+                                    <td>磁力搅拌器</td>
+                                    <td>2台</td>
+                                    <td>2024-01-08 09:15</td>
+                                    <td><span class="status rejected">已拒绝</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 出入库管理页面 -->
+            <div id="inout-page" class="content-page">
+                <div class="page-header">
+                    <h2><i class="fas fa-exchange-alt"></i> 出入库管理</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-success admin-only" onclick="showModal('in-modal')">
+                            <i class="fas fa-arrow-down"></i> 入库
+                        </button>
+                        <button class="btn btn-warning admin-only" onclick="showModal('out-modal')">
+                            <i class="fas fa-arrow-up"></i> 出库
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="inout-records">出入库记录</button>
+                    <button class="tab-btn" data-tab="pending-in">待入库</button>
+                    <button class="tab-btn" data-tab="pending-out">待出库</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>单号</th>
+                                    <th>类型</th>
+                                    <th>物料名称</th>
+                                    <th>数量</th>
+                                    <th>操作人</th>
+                                    <th>时间</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>I20240115001</td>
+                                    <td><span class="badge-type in">入库</span></td>
+                                    <td>乙醇 (分析纯)</td>
+                                    <td>+50瓶</td>
+                                    <td>张三</td>
+                                    <td>2024-01-15 14:30</td>
+                                    <td><span class="status completed">已完成</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon" title="打印"><i class="fas fa-print"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>O20240115002</td>
+                                    <td><span class="badge-type out">出库</span></td>
+                                    <td>离心管 15ml</td>
+                                    <td>-20个</td>
+                                    <td>李四</td>
+                                    <td>2024-01-15 11:20</td>
+                                    <td><span class="status completed">已完成</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon" title="打印"><i class="fas fa-print"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>I20240115003</td>
+                                    <td><span class="badge-type in">入库</span></td>
+                                    <td>培养皿</td>
+                                    <td>+200个</td>
+                                    <td>王五</td>
+                                    <td>2024-01-15 09:00</td>
+                                    <td><span class="status pending">待确认</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="确认"><i class="fas fa-check"></i></button>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 借用管理页面 -->
+            <div id="borrow-page" class="content-page">
+                <div class="page-header">
+                    <h2><i class="fas fa-hand-holding"></i> 借用管理</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="showModal('borrow-modal')">
+                            <i class="fas fa-plus"></i> 申请借用
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="borrow-all">全部</button>
+                    <button class="tab-btn" data-tab="borrow-active">借用中</button>
+                    <button class="tab-btn" data-tab="borrow-returned">已归还</button>
+                    <button class="tab-btn" data-tab="borrow-overdue">已逾期</button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>借用编号</th>
+                                    <th>物料名称</th>
+                                    <th>借用人</th>
+                                    <th>借用时间</th>
+                                    <th>预计归还</th>
+                                    <th>实际归还</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>B20240115001</td>
+                                    <td>显微镜</td>
+                                    <td>王五</td>
+                                    <td>2024-01-15 09:15</td>
+                                    <td>2024-01-22</td>
+                                    <td>-</td>
+                                    <td><span class="status pending">借用中</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon admin-only" title="归还"><i class="fas fa-undo"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>B20240108002</td>
+                                    <td>离心机</td>
+                                    <td>赵六</td>
+                                    <td>2024-01-08 10:00</td>
+                                    <td>2024-01-15</td>
+                                    <td>-</td>
+                                    <td><span class="status overdue">已逾期</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                        <button class="btn-icon" title="催还"><i class="fas fa-bell"></i></button>
+                                        <button class="btn-icon admin-only" title="归还"><i class="fas fa-undo"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>B20240101003</td>
+                                    <td>电子天平</td>
+                                    <td>张三</td>
+                                    <td>2024-01-01 14:30</td>
+                                    <td>2024-01-08</td>
+                                    <td>2024-01-07</td>
+                                    <td><span class="status completed">已归还</span></td>
+                                    <td>
+                                        <button class="btn-icon" title="查看"><i class="fas fa-eye"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 历史记录页面 -->
+            <div id="history-page" class="content-page">
+                <div class="page-header">
+                    <h2><i class="fas fa-history"></i> 历史记录</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-outline" onclick="exportData('all')">
+                            <i class="fas fa-download"></i> 导出记录
+                        </button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="search-filter">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" placeholder="搜索操作内容...">
+                            </div>
+                            <select class="filter-select">
+                                <option value="">操作类型</option>
+                                <option value="in">入库</option>
+                                <option value="out">出库</option>
+                                <option value="borrow">借用</option>
+                                <option value="return">归还</option>
+                                <option value="purchase">采购</option>
+                            </select>
+                            <input type="date" class="filter-select" placeholder="开始日期">
+                            <input type="date" class="filter-select" placeholder="结束日期">
+                            <button class="btn btn-primary">查询</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>操作类型</th>
+                                    <th>物料名称</th>
+                                    <th>数量/详情</th>
+                                    <th>操作人</th>
+                                    <th>相关单号</th>
+                                    <th>备注</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>2024-01-15 14:30:25</td>
+                                    <td><span class="badge-type in">入库</span></td>
+                                    <td>乙醇 (分析纯)</td>
+                                    <td>+50瓶</td>
+                                    <td>张三</td>
+                                    <td>I20240115001</td>
+                                    <td>常规采购入库</td>
+                                </tr>
+                                <tr>
+                                    <td>2024-01-15 11:20:18</td>
+                                    <td><span class="badge-type out">出库</span></td>
+                                    <td>离心管 15ml</td>
+                                    <td>-20个</td>
+                                    <td>李四</td>
+                                    <td>O20240115002</td>
+                                    <td>实验使用</td>
+                                </tr>
+                                <tr>
+                                    <td>2024-01-15 09:15:42</td>
+                                    <td><span class="badge-type borrow">借用</span></td>
+                                    <td>显微镜</td>
+                                    <td>1台 (借用7天)</td>
+                                    <td>王五</td>
+                                    <td>B20240115001</td>
+                                    <td>细胞观察实验</td>
+                                </tr>
+                                <tr>
+                                    <td>2024-01-14 16:45:33</td>
+                                    <td><span class="badge-type purchase">采购申请</span></td>
+                                    <td>培养皿</td>
+                                    <td>200个</td>
+                                    <td>赵六</td>
+                                    <td>P20240114001</td>
+                                    <td>常规耗材补充</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="pagination">
+                            <span>显示 1-4 条，共 3,456 条</span>
+                            <div class="page-nav">
+                                <button disabled><i class="fas fa-chevron-left"></i></button>
+                                <button class="active">1</button>
+                                <button>2</button>
+                                <button>3</button>
+                                <span>...</span>
+                                <button>692</button>
+                                <button><i class="fas fa-chevron-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 库存预警页面 -->
+            <div id="alerts-page" class="content-page admin-only">
+                <div class="page-header">
+                    <h2><i class="fas fa-bell"></i> 库存预警</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="navigateToPage('settings')">
+                            <i class="fas fa-cog"></i> 预警设置
+                        </button>
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card alert-stat">
+                        <div class="stat-icon bg-red">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="alert-danger-count">0</h3>
+                            <p>库存不足</p>
+                        </div>
+                    </div>
+                    <div class="stat-card alert-stat">
+                        <div class="stat-icon bg-orange">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="alert-warning-count">0</h3>
+                            <p>库存预警</p>
+                        </div>
+                    </div>
+                    <div class="stat-card alert-stat">
+                        <div class="stat-icon bg-blue">
+                            <i class="fas fa-envelope"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="alert-mail-count">0</h3>
+                            <p>今日邮件通知</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>预警物料清单</h3>
+                        <div class="search-filter">
+                            <select class="filter-select">
+                                <option value="">所有预警</option>
+                                <option value="danger">库存不足</option>
+                                <option value="warning">库存预警</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>物料编号</th>
+                                    <th>物料名称</th>
+                                    <th>当前库存</th>
+                                    <th>预警阈值</th>
+                                    <th>缺口数量</th>
+                                    <th>预警级别</th>
+                                    <th>通知状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>M2024001</td>
+                                    <td>乙醇 (分析纯)</td>
+                                    <td>2瓶</td>
+                                    <td>10瓶</td>
+                                    <td class="text-danger">-8瓶</td>
+                                    <td><span class="status-badge danger">严重不足</span></td>
+                                    <td><span class="status completed">已发送</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary">一键采购</button>
+                                        <button class="btn-icon" title="忽略"><i class="fas fa-eye-slash"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>M2024002</td>
+                                    <td>离心管 15ml</td>
+                                    <td>15个</td>
+                                    <td>20个</td>
+                                    <td class="text-warning">-5个</td>
+                                    <td><span class="status-badge warning">预警</span></td>
+                                    <td><span class="status completed">已发送</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary">一键采购</button>
+                                        <button class="btn-icon" title="忽略"><i class="fas fa-eye-slash"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>M2024003</td>
+                                    <td>培养皿</td>
+                                    <td>20个</td>
+                                    <td>30个</td>
+                                    <td class="text-warning">-10个</td>
+                                    <td><span class="status-badge warning">预警</span></td>
+                                    <td><span class="status pending">待发送</span></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary">一键采购</button>
+                                        <button class="btn-icon" title="忽略"><i class="fas fa-eye-slash"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用户管理页面 -->
+            <div id="users-page" class="content-page admin-only">
+                <div class="page-header">
+                    <h2><i class="fas fa-users"></i> 用户管理</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="showModal('add-user-modal')">
+                            <i class="fas fa-plus"></i> 添加用户
+                        </button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="search-filter">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="user-search" placeholder="搜索用户名、姓名、部门...">
+                            </div>
+                            <select class="filter-select" id="user-role-filter">
+                                <option value="">所有角色</option>
+                                <option value="admin">管理员</option>
+                                <option value="visitor">访问者</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox"></th>
+                                    <th>用户ID</th>
+                                    <th>用户名</th>
+                                    <th>姓名</th>
+                                    <th>角色</th>
+                                    <th>部门</th>
+                                    <th>联系电话</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>U001</td>
+                                    <td>admin</td>
+                                    <td>系统管理员</td>
+                                    <td><span class="role-badge admin">管理员</span></td>
+                                    <td>实验室管理部</td>
+                                    <td>13800138000</td>
+                                    <td><span class="status-badge normal">正常</span></td>
+                                    <td>2024-01-01</td>
+                                    <td>
+                                        <button class="btn-icon" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="重置密码"><i class="fas fa-key"></i></button>
+                                        <button class="btn-icon" title="禁用"><i class="fas fa-ban"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>U002</td>
+                                    <td>zhangsan</td>
+                                    <td>张三</td>
+                                    <td><span class="role-badge visitor">访问者</span></td>
+                                    <td>化学实验室</td>
+                                    <td>13900139000</td>
+                                    <td><span class="status-badge normal">正常</span></td>
+                                    <td>2024-01-05</td>
+                                    <td>
+                                        <button class="btn-icon" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="重置密码"><i class="fas fa-key"></i></button>
+                                        <button class="btn-icon" title="禁用"><i class="fas fa-ban"></i></button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox"></td>
+                                    <td>U003</td>
+                                    <td>lisi</td>
+                                    <td>李四</td>
+                                    <td><span class="role-badge visitor">访问者</span></td>
+                                    <td>生物实验室</td>
+                                    <td>13700137000</td>
+                                    <td><span class="status-badge normal">正常</span></td>
+                                    <td>2024-01-08</td>
+                                    <td>
+                                        <button class="btn-icon" title="编辑"><i class="fas fa-edit"></i></button>
+                                        <button class="btn-icon" title="重置密码"><i class="fas fa-key"></i></button>
+                                        <button class="btn-icon" title="禁用"><i class="fas fa-ban"></i></button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统设置页面 -->
+            <div id="settings-page" class="content-page admin-only">
+                <div class="page-header">
+                    <h2><i class="fas fa-cog"></i> 系统设置</h2>
+                </div>
+                <div class="settings-grid">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-bell"></i> 预警设置</h3>
+                        </div>
+                        <div class="card-body">
+                            <form class="settings-form" id="alert-settings-form">
+                                <div class="form-group">
+                                    <label>预警邮件接收地址</label>
+                                    <input type="email" id="setting-alert-email" value="admin@lab.com">
+                                </div>
+                                <div class="form-group">
+                                    <label>预警检查频率</label>
+                                    <select id="setting-alert-interval">
+                                        <option value="15">每15分钟</option>
+                                        <option value="30" selected>每30分钟</option>
+                                        <option value="60">每小时</option>
+                                        <option value="360">每6小时</option>
+                                        <option value="1440">每天</option>
+                                        <option value="4320">每3天</option>
+                                        <option value="8640">每6天</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="setting-alert-email-enabled" checked> 库存不足时立即发送邮件
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="setting-warning-email-enabled" checked> 库存预警时发送邮件
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="setting-overdue-email-enabled"> 借用逾期时发送邮件
+                                    </label>
+                                </div>
+                                <button type="submit" class="btn btn-primary">保存设置</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-database"></i> 数据管理</h3>
+                        </div>
+                        <div class="card-body">
+                            <form class="settings-form" id="data-settings-form">
+                                <div class="form-group">
+                                    <label>数据存储位置</label>
+                                    <select id="setting-storage-location">
+                                        <option value="local">下载到本机</option>
+                                        <option value="cloud" selected>云端存储</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>自动备份频率</label>
+                                    <select id="setting-backup-frequency">
+                                        <option value="daily" selected>每天</option>
+                                        <option value="weekly">每周</option>
+                                        <option value="monthly">每月</option>
+                                    </select>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-outline" id="backup-now-btn">
+                                        <i class="fas fa-download"></i> 导出Excel备份
+                                    </button>
+                                    <button type="button" class="btn btn-outline">
+                                        <i class="fas fa-upload"></i> 恢复数据
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-info-circle"></i> 系统信息</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="info-list">
+                                <div class="info-item">
+                                    <span>系统版本</span>
+                                    <span>v1.0.0</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>数据库</span>
+                                    <span>SQLite / MySQL</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>最后更新</span>
+                                    <span>2024-01-15</span>
+                                </div>
+                                <div class="info-item">
+                                    <span>注册用户</span>
+                                    <span>200人</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 模态框 -->
+    <div id="modal-overlay" class="modal-overlay" onclick="closeAllModals()"></div>
+
+    <!-- 新增物料模态框 -->
+    <div id="add-material-modal" class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-plus"></i> 新增物料</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <form class="form-grid" id="material-form">
+                <div class="form-group">
+                    <label>物料编号</label>
+                    <input type="text" id="material-code" placeholder="系统自动生成">
+                </div>
+                <div class="form-group">
+                    <label>物料名称 <span class="required">*</span></label>
+                    <input type="text" id="material-name" placeholder="请输入物料名称" required>
+                </div>
+                <div class="form-group">
+                    <label>分类 <span class="required">*</span></label>
+                    <select id="material-category" class="category-select" required>
+                        <option value="">请选择</option>
+                        <option value="chemical">化学试剂</option>
+                        <option value="consumable">实验耗材</option>
+                        <option value="equipment">仪器设备</option>
+                        <option value="glassware">玻璃器皿</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>规格型号</label>
+                    <input type="text" id="material-spec" placeholder="如: 500ml/瓶">
+                </div>
+                <div class="form-group">
+                    <label>初始库存 <span class="required">*</span></label>
+                    <input type="number" id="material-stock" min="0" placeholder="0" required>
+                </div>
+                <div class="form-group">
+                    <label>预警阈值 <span class="required">*</span></label>
+                    <input type="number" id="material-threshold" min="0" placeholder="10" required>
+                </div>
+                <div class="form-group">
+                    <label>单位</label>
+                    <input type="text" id="material-unit" placeholder="如: 瓶、个、台">
+                </div>
+                <div class="form-group">
+                    <label>存放位置</label>
+                    <input type="text" id="material-location" placeholder="如: A区-01架">
+                </div>
+                <div class="form-group full-width">
+                    <label>备注</label>
+                    <textarea id="material-remark" rows="2" placeholder="其他信息..."></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
+            <button class="btn btn-primary" onclick="handleMaterialSave()">保存</button>
+        </div>
+    </div>
+
+    <!-- 入库模态框 -->
+    <div id="in-modal" class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-arrow-down"></i> 入库操作</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <form id="stock-in-form">
+                <div class="form-group">
+                    <label>选择物料 <span class="required">*</span></label>
+                    <select id="stock-in-material" required>
+                        <option value="">请选择物料</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>入库数量 <span class="required">*</span></label>
+                    <input type="number" id="stock-in-quantity" min="1" placeholder="请输入数量" required>
+                </div>
+                <div class="form-group">
+                    <label>入库类型</label>
+                    <select id="stock-in-type">
+                        <option value="purchase">采购入库</option>
+                        <option value="return">归还入库</option>
+                        <option value="other">其他</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <textarea id="stock-in-remark" rows="2" placeholder="入库备注..."></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
+            <button class="btn btn-success" onclick="handleStockIn()">确认入库</button>
+        </div>
+    </div>
+
+    <!-- 出库模态框 -->
+    <div id="out-modal" class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-arrow-up"></i> 出库操作</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <form id="stock-out-form">
+                <div class="form-group">
+                    <label>选择物料 <span class="required">*</span></label>
+                    <select id="stock-out-material" required>
+                        <option value="">请选择物料</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>出库数量 <span class="required">*</span></label>
+                    <input type="number" id="stock-out-quantity" min="1" placeholder="请输入数量" required>
+                </div>
+                <div class="form-group">
+                    <label>领用人 <span class="required">*</span></label>
+                    <input type="text" id="stock-out-recipient" placeholder="请输入领用人姓名" required>
+                </div>
+                <div class="form-group">
+                    <label>用途</label>
+                    <textarea id="stock-out-purpose" rows="2" placeholder="出库用途..."></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
+            <button class="btn btn-warning" onclick="handleStockOut()">确认出库</button>
+        </div>
+    </div>
+
+    <!-- 借用模态框 -->
+    <div id="borrow-modal" class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-hand-holding"></i> 申请借用</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <form id="borrow-form">
+                <div class="form-group">
+                    <label>选择物料 <span class="required">*</span></label>
+                    <select id="borrow-material" required>
+                        <option value="">请选择物料</option>
+                        <option value="M2024004">电子天平 - 可借: 5台</option>
+                        <option value="M2024005">移液器 - 可借: 8支</option>
+                        <option value="M2024006">显微镜 - 可借: 3台</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>借用数量 <span class="required">*</span></label>
+                    <input type="number" id="borrow-quantity" min="1" value="1" required>
+                </div>
+                <div class="form-group">
+                    <label>是否需要归还 <span class="required">*</span></label>
+                    <select id="borrow-requires-return">
+                        <option value="true">需要归还</option>
+                        <option value="false">不需要归还</option>
+                    </select>
+                </div>
+                <div class="form-group" id="borrow-return-date-group">
+                    <label>预计归还日期 <span class="required">*</span></label>
+                    <input type="date" id="borrow-return-date">
+                </div>
+                <div class="form-group">
+                    <label>借用理由 <span class="required">*</span></label>
+                    <textarea id="borrow-reason" rows="3" placeholder="请说明借用理由..." required></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
+            <button class="btn btn-primary" onclick="handleBorrowSubmit()">提交申请</button>
+        </div>
+    </div>
+
+    <!-- 添加用户模态框 -->
+    <div id="add-user-modal" class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-user-plus"></i> 添加用户</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <form class="form-grid" id="user-form">
+                <div class="form-group">
+                    <label>用户名 <span class="required">*</span></label>
+                    <input type="text" id="user-username" placeholder="请输入用户名" required>
+                </div>
+                <div class="form-group">
+                    <label>姓名 <span class="required">*</span></label>
+                    <input type="text" id="user-name" placeholder="请输入真实姓名" required>
+                </div>
+                <div class="form-group">
+                    <label>初始密码 <span class="required">*</span></label>
+                    <input type="password" id="user-password" placeholder="新增用户必填；编辑时留空不修改">
+                </div>
+                <div class="form-group">
+                    <label>角色 <span class="required">*</span></label>
+                    <select id="user-role" required>
+                        <option value="visitor">访问者</option>
+                        <option value="admin">管理员</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>部门</label>
+                    <input type="text" id="user-department" placeholder="请输入部门">
+                </div>
+                <div class="form-group">
+                    <label>联系电话</label>
+                    <input type="tel" id="user-phone" placeholder="请输入电话">
+                </div>
+                <div class="form-group full-width">
+                    <label>邮箱</label>
+                    <input type="email" id="user-email" placeholder="请输入邮箱">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
+            <button class="btn btn-primary" onclick="handleUserCreate()">添加用户</button>
+        </div>
+    </div>
+
+    <script src="api.js?v=20260820-import-fix"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="app.js?v=20260820-import-fix"></script>
+</body>
+</html>

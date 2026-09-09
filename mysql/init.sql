@@ -1,0 +1,2 @@
+-- MySQL container initialization placeholder.
+-- The Flask application creates tables and seed data during deployment.
