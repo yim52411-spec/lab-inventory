@@ -226,6 +226,13 @@ def get_dashboard_stats():
     pending_purchases = PurchaseRequest.query.filter_by(status='pending').count()
     active_borrows = BorrowRecord.query.filter_by(status='active').count()
     overdue_borrows = BorrowRecord.query.filter_by(status='overdue').count()
+
+    purchase_trend = {}
+    for item in PurchaseRequest.query.order_by(PurchaseRequest.created_at.asc()).all():
+        month = item.created_at.strftime('%Y-%m')
+        current = purchase_trend.setdefault(month, {'month': month, 'quantity': 0, 'amount': 0})
+        current['quantity'] += item.quantity or 0
+        current['amount'] += float(item.quantity or 0) * float(item.estimated_price or 0)
     
     return jsonify({
         'success': True,
@@ -246,5 +253,6 @@ def get_dashboard_stats():
                 'overdue_borrows': overdue_borrows
             },
             'recent_activities': [r.to_dict() for r in recent_records]
+            , 'purchase_trend': list(purchase_trend.values())[-12:]
         }
     })

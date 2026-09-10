@@ -2,14 +2,96 @@
 出入库管理API
 """
 from flask import Blueprint, request, jsonify
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
+import re
 from flask_jwt_extended import jwt_required
 from app import db
-from app.models import Material, OperationRecord, PurchaseRequest
+from app.models import Material, MaterialBatch, OperationRecord, PurchaseRequest
 from app.api.auth import admin_required, get_current_user_id
-from app.api.alerts import sync_material_alert
+from app.api.alerts import sync_material_alert, sync_batch_expiry_alert
 from app.utils.helpers import generate_code
 
 inventory_bp = Blueprint('inventory', __name__)
+
+
+def parse_date(value):
+    if value is None or not str(value).strip():
+        return None
+    raw = str(value).strip()
+    if re.fullmatch(r'\d{8}', raw):
+        return datetime.strptime(raw, '%Y%m%d').date()
+
+    parts = re.split(r'[-/]', raw)
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        year = datetime.now(ZoneInfo('Asia/Shanghai')).year
+        month, day = map(int, parts)
+    elif len(parts) == 3 and all(part.isdigit() for part in parts):
+        year, month, day = map(int, parts)
+    else:
+        raise ValueError('日期格式不正确，例如 9/9、9-9、2026-9/9 或 20260808')
+
+    try:
+        return date(year, month, day)
+    except ValueError:
+        raise ValueError('日期不存在，请检查年月日')
+
+
+def create_batch(material, data, quantity, received_at=None):
+    received_at = received_at or datetime.utcnow()
+    expiry_date = parse_date(data.get('expiry_date'))
+    shelf_life_days = data.get('shelf_life_days')
+    if shelf_life_days is not None and str(shelf_life_days).strip():
+        shelf_life_days = int(str(shelf_life_days).strip())
+        if shelf_life_days < 0:
+            raise ValueError('保质期天数不能为负数')
+        if not expiry_date:
+            expiry_date = received_at.date() + timedelta(days=shelf_life_days)
+    batch = MaterialBatch(
+        material_id=material.id,
+        batch_no=data.get('batch_no') or generate_code('BT'),
+        production_date=parse_date(data.get('production_date')),
+        received_at=received_at,
+        expiry_date=expiry_date,
+        shelf_life_days=shelf_life_days,
+        quantity_received=quantity,
+        quantity_remaining=quantity,
+    )
+    db.session.add(batch)
+    db.session.flush()
+    sync_batch_expiry_alert(batch)
+    return batch
+
+
+def consume_batches(material, quantity):
+    remaining = quantity
+    batches = MaterialBatch.query.filter_by(material_id=material.id).filter(
+        MaterialBatch.quantity_remaining > 0
+    ).order_by(
+        MaterialBatch.expiry_date.is_(None), MaterialBatch.expiry_date.asc(),
+        MaterialBatch.production_date.is_(None), MaterialBatch.production_date.asc(),
+        MaterialBatch.received_at.asc(), MaterialBatch.id.asc()
+    ).all()
+    if not batches and material.stock > 0:
+        legacy = MaterialBatch(
+            material_id=material.id,
+            batch_no='LEGACY-%s' % material.id,
+            received_at=material.created_at or datetime.utcnow(),
+            quantity_received=material.stock,
+            quantity_remaining=material.stock,
+        )
+        db.session.add(legacy)
+        db.session.flush()
+        batches = [legacy]
+    for batch in batches:
+        used = min(batch.quantity_remaining, remaining)
+        batch.quantity_remaining -= used
+        remaining -= used
+        sync_batch_expiry_alert(batch)
+        if remaining == 0:
+            break
+    if remaining:
+        raise ValueError('批次库存不足，无法按先进先出完成出库')
 
 
 @inventory_bp.route('/in', methods=['POST'])
@@ -65,6 +147,12 @@ def stock_in():
         related_id = matched_purchase.id
         related_type = 'purchase'
         remark = remark or f'手动入库自动关联采购申请: {matched_purchase.request_no}'
+
+    try:
+        batch = create_batch(material, data, quantity)
+    except (ValueError, TypeError) as exc:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(exc)}), 400
     
     # 创建操作记录
     record = OperationRecord(
@@ -90,7 +178,8 @@ def stock_in():
         'data': {
             'material': material.to_dict(),
             'record': record.to_dict(),
-            'matched_purchase': matched_purchase.to_dict() if matched_purchase else None
+            'matched_purchase': matched_purchase.to_dict() if matched_purchase else None,
+            'batch': batch.to_dict()
         }
     })
 
@@ -122,6 +211,11 @@ def stock_out():
             'success': False,
             'message': f'库存不足，当前库存: {material.stock}'
         }), 400
+
+    try:
+        consume_batches(material, quantity)
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
     
     # 记录出库前库存
     stock_before = material.stock

@@ -4,9 +4,9 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required
 from sqlalchemy import and_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from app import db, mail
-from app.models import Alert, Material, User, SystemSetting
+from app.models import Alert, Material, MaterialBatch, User, SystemSetting
 from app.api.auth import admin_required
 from flask_mail import Message
 
@@ -15,7 +15,7 @@ alerts_bp = Blueprint('alerts', __name__)
 
 def sync_material_alert(material):
     """Keep unresolved stock alerts aligned with the material's current stock."""
-    unresolved = Alert.query.filter_by(material_id=material.id, is_resolved=False).all()
+    unresolved = Alert.query.filter_by(material_id=material.id, alert_type='stock_low', is_resolved=False).all()
 
     if material.stock > material.threshold:
         for alert in unresolved:
@@ -42,6 +42,51 @@ def sync_material_alert(material):
     return alert
 
 
+def sync_batch_expiry_alert(batch, today=None):
+    """按批次剩余库存和到期日期同步提前30天的到期预警。"""
+    alerts = Alert.query.filter_by(batch_id=batch.id, alert_type='expiry', is_resolved=False).all()
+    today = today or date.today()
+    should_alert = bool(
+        batch.quantity_remaining > 0 and batch.expiry_date and
+        today >= batch.expiry_date - timedelta(days=30)
+    )
+    if not should_alert:
+        for alert in alerts:
+            alert.is_resolved = True
+            alert.resolved_at = datetime.utcnow()
+        return None
+
+    level = 'danger' if today >= batch.expiry_date else 'warning'
+    alert = alerts[0] if alerts else Alert(
+        material_id=batch.material_id,
+        batch_id=batch.id,
+        alert_type='expiry',
+        current_stock=batch.quantity_remaining,
+        threshold=0,
+    )
+    alert.level = level
+    alert.current_stock = batch.quantity_remaining
+    alert.threshold = 0
+    if not alerts:
+        db.session.add(alert)
+    return alert
+
+
+def sync_all_alerts():
+    new_alerts = []
+    for material in Material.query.all():
+        before = Alert.query.filter_by(material_id=material.id, alert_type='stock_low', is_resolved=False).first()
+        alert = sync_material_alert(material)
+        if alert and not before:
+            new_alerts.append(alert)
+        for batch in material.batches.all():
+            before = Alert.query.filter_by(batch_id=batch.id, alert_type='expiry', is_resolved=False).first()
+            alert = sync_batch_expiry_alert(batch)
+            if alert and not before:
+                new_alerts.append(alert)
+    return new_alerts
+
+
 def get_setting(key, default=None):
     setting = SystemSetting.query.filter_by(key=key).first()
     return setting.value if setting else default
@@ -64,6 +109,60 @@ def mail_is_configured():
         and current_app.config.get('MAIL_PASSWORD')
         and current_app.config.get('MAIL_DEFAULT_SENDER')
     )
+
+
+@alerts_bp.route('/mail-status', methods=['GET'])
+@admin_required
+def get_mail_status():
+    """返回邮件发送链路的非敏感诊断信息，不发送测试邮件。"""
+    scheduler = current_app.extensions.get('scheduler')
+    return jsonify({
+        'success': True,
+        'data': {
+            'configured': mail_is_configured(),
+            'enabled': get_setting('alert_email_enabled', 'true') == 'true',
+            'server': current_app.config.get('MAIL_SERVER'),
+            'port': current_app.config.get('MAIL_PORT'),
+            'mode': 'SSL' if current_app.config.get('MAIL_USE_SSL') else ('STARTTLS' if current_app.config.get('MAIL_USE_TLS') else 'plain'),
+            'username': current_app.config.get('MAIL_USERNAME') or '',
+            'recipients': get_alert_recipients(),
+            'unsent_alerts': Alert.query.filter_by(is_sent=False, is_resolved=False).count(),
+            'last_alert_check_at': get_setting('last_alert_check_at', ''),
+            'scheduler_running': bool(scheduler and scheduler.running)
+        }
+    })
+
+
+def send_pending_alert_emails():
+    """发送当前未发送的预警；供接口和后台调度器复用。"""
+    unsent_alerts = Alert.query.filter_by(is_sent=False, is_resolved=False).all()
+    recipients = get_alert_recipients()
+    if not unsent_alerts or not recipients or not mail_is_configured():
+        return 0
+    subject = f'【库存预警】{len(unsent_alerts)} 条物料预警通知'
+    body = '<h2>库存预警通知</h2><table border="1" cellpadding="10">'
+    body += '<tr><th>物料编号</th><th>物料名称</th><th>批次</th><th>剩余库存</th><th>到期日期</th><th>类型</th><th>级别</th></tr>'
+    for alert in unsent_alerts:
+        material = alert.material
+        alert.is_sent = True
+        alert.sent_at = datetime.utcnow()
+        body += (
+            f'<tr><td>{material.code}</td><td>{material.name}</td>'
+            f'<td>{alert.batch.batch_no if alert.batch else "-"}</td>'
+            f'<td>{alert.current_stock}</td>'
+            f'<td>{alert.batch.expiry_date if alert.batch else "-"}</td>'
+            f'<td>{"到期预警" if alert.alert_type == "expiry" else "库存预警"}</td>'
+            f'<td>{alert.level}</td></tr>'
+        )
+    body += '</table><p>请登录系统查看详情并及时处理。</p>'
+    try:
+        mail.send(Message(subject=subject, recipients=recipients, html=body))
+        db.session.commit()
+        return len(unsent_alerts)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('预警邮件发送失败')
+        return 0
 
 
 @alerts_bp.route('', methods=['GET'])
@@ -133,24 +232,15 @@ def check_alerts():
     """手动检查库存预警（管理员）"""
     new_alerts = []
 
-    materials = Material.query.all()
-
-    for material in materials:
-        had_unresolved = Alert.query.filter(
-            and_(Alert.material_id == material.id, Alert.is_resolved == False)
-        ).first()
-        alert = sync_material_alert(material)
-        if alert and not had_unresolved:
-            new_alerts.append(alert)
+    new_alerts = sync_all_alerts()
     
     db.session.commit()
 
     email_status = 'disabled'
     if get_setting('alert_email_enabled', 'true') == 'true' and new_alerts:
         if mail_is_configured():
-            response = send_alert_emails()
-            send_result = response[0].get_json() if isinstance(response, tuple) else response.get_json()
-            email_status = send_result.get('message', '邮件发送已触发')
+            sent_count = send_pending_alert_emails()
+            email_status = f'已发送 {sent_count} 条预警邮件'
         else:
             email_status = '邮件未发送：SMTP账号、密码或默认发件人未配置'
     
@@ -196,54 +286,9 @@ def send_alert_emails():
             'message': 'SMTP未配置完整，无法发送邮件'
         }), 400
     
-    sent_count = 0
-    
-    try:
-        # 构建邮件内容
-        subject = f'【库存预警】{len(unsent_alerts)} 条物料库存预警通知'
-        
-        body = '<h2>库存预警通知</h2>'
-        body += '<p>以下物料库存不足，请及时处理：</p>'
-        body += '<table border="1" cellpadding="10">'
-        body += '<tr><th>物料编号</th><th>物料名称</th><th>当前库存</th><th>预警阈值</th><th>级别</th></tr>'
-        
-        for alert in unsent_alerts:
-            material = alert.material
-            color = '#ef4444' if alert.level == 'danger' else '#f59e0b'
-            level_text = '严重不足' if alert.level == 'danger' else '库存预警'
-            
-            body += f'<tr>'
-            body += f'<td>{material.code}</td>'
-            body += f'<td>{material.name}</td>'
-            body += f'<td>{alert.current_stock}</td>'
-            body += f'<td>{alert.threshold}</td>'
-            body += f'<td style="color: {color}">{level_text}</td>'
-            body += f'</tr>'
-            
-            # 标记为已发送
-            alert.is_sent = True
-            alert.sent_at = datetime.utcnow()
-        
-        body += '</table>'
-        body += '<p>请登录系统查看详情并及时采购补充库存。</p>'
-        
-        # 发送邮件
-        msg = Message(
-            subject=subject,
-            recipients=admin_emails,
-            html=body
-        )
-        mail.send(msg)
-        
-        db.session.commit()
-        sent_count = len(unsent_alerts)
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({
-            'success': False,
-            'message': f'邮件发送失败: {str(e)}'
-        }), 500
+    sent_count = send_pending_alert_emails()
+    if not sent_count:
+        return jsonify({'success': False, 'message': '邮件发送失败，请检查SMTP配置和日志'}), 500
     
     return jsonify({
         'success': True,
@@ -286,6 +331,7 @@ def get_alert_settings():
             'mail_server': current_app.config.get('MAIL_SERVER'),
             'mail_port': current_app.config.get('MAIL_PORT'),
             'mail_use_tls': current_app.config.get('MAIL_USE_TLS'),
+            'mail_use_ssl': current_app.config.get('MAIL_USE_SSL'),
             'mail_username': current_app.config.get('MAIL_USERNAME'),
             'mail_default_sender': current_app.config.get('MAIL_DEFAULT_SENDER')
         }

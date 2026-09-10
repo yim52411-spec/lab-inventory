@@ -13,13 +13,16 @@ const AppState = {
     editingUserId: null,
     pendingPurchaseMaterialId: null,
     materialPagination: { current_page: 1, per_page: 20, total: 0, pages: 1 },
+    historyPagination: { current_page: 1, per_page: 20, total: 0, pages: 1 },
     purchaseSummary: { pending: 0, approved: 0, total_attention: 0, latest: [] },
     borrowSummary: { pending: 0, active: 0, total_attention: 0, latest: [] },
     reminderTimer: null,
     lastPurchasePending: 0,
     lastBorrowPending: 0,
     activeInoutTab: 'inout-records',
-    activeBorrowTab: 'borrow-all'
+    activeBorrowTab: 'borrow-all',
+    purchaseTrend: [],
+    pendingInboundPurchaseId: null
 };
 
 // 模拟数据
@@ -531,6 +534,9 @@ function initFormHandlers() {
         dataSettingsForm.addEventListener('submit', handleSettingsSubmit);
     }
 
+    const historySearchButton = document.getElementById('history-search-btn');
+    if (historySearchButton) historySearchButton.addEventListener('click', () => loadHistoryData(1));
+
     const backupButton = document.getElementById('backup-now-btn');
     if (backupButton) {
         backupButton.addEventListener('click', handleBackupNow);
@@ -607,6 +613,10 @@ async function loadPurchaseData() {
         const result = await API.Purchase.getList(isVisitor() ? { my: true } : {});
         if (result.success) {
             AppState.purchases = result.data.items;
+            if (API.Record?.dashboard) {
+                const dashboard = await API.Record.dashboard();
+                if (dashboard.success) AppState.purchaseTrend = dashboard.data.purchase_trend || [];
+            }
             updatePurchaseTable();
             updatePurchaseTrend();
             updateAlertList();
@@ -805,19 +815,36 @@ async function completePurchase(id) {
     if (!requireAdminAction()) return;
     const item = AppState.purchases?.find(p => p.id === id);
     const defaultQuantity = item?.quantity || 1;
-    const input = prompt('请输入实际入库数量', defaultQuantity);
-    if (input === null) return;
+    if (!item) return;
+    AppState.pendingInboundPurchaseId = id;
+    document.getElementById('purchase-inbound-quantity').value = defaultQuantity;
+    document.getElementById('purchase-inbound-batch-no').value = '';
+    document.getElementById('purchase-inbound-production-date').value = '';
+    document.getElementById('purchase-inbound-expiry-date').value = '';
+    document.getElementById('purchase-inbound-shelf-life-days').value = '';
+    showModal('purchase-inbound-modal');
+}
 
-    const actualQuantity = parseInt(input, 10);
-    if (!actualQuantity || actualQuantity <= 0) {
-        showNotification('错误', '入库数量必须大于0', 'error');
+async function confirmPurchaseInbound() {
+    const id = AppState.pendingInboundPurchaseId;
+    const actualQuantity = parseInt(document.getElementById('purchase-inbound-quantity').value, 10);
+    if (!id || !actualQuantity || actualQuantity <= 0) {
+        showNotification('错误', '实际入库数量必须大于0', 'error');
         return;
     }
 
     try {
-        const result = await API.Purchase.complete(id, { actual_quantity: actualQuantity });
+        const result = await API.Purchase.complete(id, {
+            actual_quantity: actualQuantity,
+            batch_no: document.getElementById('purchase-inbound-batch-no').value.trim() || null,
+            production_date: document.getElementById('purchase-inbound-production-date').value.trim() || null,
+            expiry_date: document.getElementById('purchase-inbound-expiry-date').value.trim() || null,
+            shelf_life_days: document.getElementById('purchase-inbound-shelf-life-days').value.trim() || null
+        });
         if (result.success) {
             showNotification('成功', '采购单已入库，库存和预警已同步', 'success');
+            AppState.pendingInboundPurchaseId = null;
+            closeAllModals();
             await loadPurchaseData();
             await loadPurchaseSummary();
             await loadMaterialsData();
@@ -1415,24 +1442,41 @@ function updatePurchaseTrend() {
     const container = document.getElementById('purchase-trend-chart');
     if (!container) return;
 
-    const purchases = (AppState.purchases || []).slice().reverse().slice(-8);
-    if (purchases.length === 0) {
+    const grouped = {};
+    if (AppState.purchaseTrend?.length) {
+        AppState.purchaseTrend.forEach(item => {
+            grouped[item.month] = {
+                quantity: Number(item.quantity || 0),
+                amount: Number(item.amount || 0)
+            };
+        });
+    }
+    if (!AppState.purchaseTrend?.length) {
+        (AppState.purchases || []).forEach(p => {
+            const month = String(p.created_at || '').slice(0, 7) || '未知月份';
+            if (!grouped[month]) grouped[month] = { quantity: 0, amount: 0 };
+            grouped[month].quantity += Number(p.quantity || 0);
+            grouped[month].amount += Number(p.quantity || 0) * Number(p.estimated_price || 0);
+        });
+    }
+    const months = Object.keys(grouped).filter(m => m !== '未知月份').sort().slice(-12);
+    if (months.length === 0) {
         renderTrendEmpty(container, '暂无采购趋势数据', '提交采购申请后自动生成趋势');
         return;
     }
 
-    const quantitySeries = purchases.map(p => ({
-        label: formatTrendLabel(p.created_at),
-        value: Number(p.quantity || 0),
-        detail: p.material_name || '-'
+    const quantitySeries = months.map(month => ({
+        label: month,
+        value: grouped[month].quantity,
+        detail: `${month}采购汇总`
     }));
-    const amountSeries = purchases.map(p => {
-        const amount = Number(p.quantity || 0) * Number(p.estimated_price || 0);
+    const amountSeries = months.map(month => {
+        const amount = grouped[month].amount;
         return {
-            label: formatTrendLabel(p.created_at),
+            label: month,
             value: amount,
             displayValue: `¥${formatMoney(amount)}`,
-            detail: p.material_name || '-'
+            detail: `${month}采购汇总`
         };
     });
 
@@ -1805,7 +1849,11 @@ async function handleStockIn() {
             material_id: parseInt(materialId),
             quantity: quantity,
             related_type: type,
-            remark: remark
+            remark: remark,
+            batch_no: document.getElementById('stock-in-batch-no')?.value.trim(),
+            production_date: document.getElementById('stock-in-production-date')?.value || null,
+            expiry_date: document.getElementById('stock-in-expiry-date')?.value || null,
+            shelf_life_days: document.getElementById('stock-in-shelf-life-days')?.value || null
         });
         
         if (result.success) {
@@ -1957,8 +2005,16 @@ async function handleUserCreate() {
 /**
  * 采购物料 - 从预警列表直接申请
  */
-function purchaseMaterial(id) {
-    const material = AppState.materials.find(m => m.id === id);
+async function purchaseMaterial(id) {
+    let material = AppState.materials.find(m => Number(m.id) === Number(id));
+    if (!material && API.Material?.getDetail) {
+        try {
+            const result = await API.Material.getDetail(id);
+            material = result.success ? result.data : null;
+        } catch (error) {
+            showNotification('错误', '无法读取物料信息', 'error');
+        }
+    }
     if (material) {
         // 跳转到采购申请页面并填充物料信息
         navigateToPage('purchase');
@@ -2105,11 +2161,25 @@ function viewBorrow(id) {
 /**
  * 加载历史记录数据
  */
-async function loadHistoryData() {
+async function loadHistoryData(page = 1) {
     try {
-        const result = await API.Record.getList('inventory');
+        const type = document.getElementById('history-type-filter')?.value || 'inventory';
+        const params = { page, per_page: 20 };
+        const keyword = document.getElementById('history-keyword')?.value.trim();
+        const startDate = document.getElementById('history-start-date')?.value;
+        const endDate = document.getElementById('history-end-date')?.value;
+        if (keyword) params.keyword = keyword;
+        if (startDate) params.start_date = startDate;
+        if (endDate) params.end_date = endDate;
+        const result = await API.Record.getList(type, params);
         if (result.success) {
             AppState.records = result.data.items;
+            AppState.historyPagination = {
+                current_page: result.data.current_page || 1,
+                per_page: result.data.per_page || 20,
+                total: result.data.total || 0,
+                pages: result.data.pages || 1
+            };
             updateHistoryTable();
             updateInventoryTrend();
         }
@@ -2301,10 +2371,11 @@ function updateAlertsTable() {
         <tr>
             <td>${a.material_code || '-'}</td>
             <td>${a.material_name || '-'}</td>
+            <td>${a.batch_no || '-'}</td>
             <td>${a.current_stock}</td>
             <td>${a.threshold}</td>
             <td class="${a.level === 'danger' ? 'text-danger' : 'text-warning'}">${Number(a.current_stock || 0) - Number(a.threshold || 0)}</td>
-            <td><span class="status-badge ${a.level}">${a.level === 'danger' ? '严重不足' : '库存预警'}</span></td>
+            <td><span class="status-badge ${a.level}">${a.alert_type === 'expiry' ? '到期预警' : (a.level === 'danger' ? '严重不足' : '库存预警')}</span></td>
             <td>${a.is_sent ? '已发送' : '未发送'}</td>
             <td><button class="btn btn-sm btn-primary" onclick="purchaseMaterial(${a.material_id})">申请采购</button></td>
         </tr>
@@ -2408,6 +2479,8 @@ function updateHistoryTable() {
     const tbody = document.querySelector('#history-page tbody');
     if (!tbody || !AppState.records) return;
 
+    updateHistoryPagination();
+
     if (AppState.records.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">暂无记录</td></tr>';
         updateRecentActivityTable();
@@ -2427,6 +2500,41 @@ function updateHistoryTable() {
     `).join('');
     updateRecentActivityTable();
     updateInventoryTrend();
+}
+
+function updateHistoryPagination() {
+    const pagination = document.querySelector('#history-page .pagination');
+    const status = pagination?.querySelector(':scope > span');
+    const nav = pagination?.querySelector('.page-nav');
+    if (!pagination || !status || !nav) return;
+
+    const pageInfo = AppState.historyPagination || {};
+    const total = Number(pageInfo.total || 0);
+    const current = Math.max(Number(pageInfo.current_page || 1), 1);
+    const perPage = Math.max(Number(pageInfo.per_page || 20), 1);
+    const pages = Math.max(Number(pageInfo.pages || 1), 1);
+    const count = AppState.records.length;
+    const start = total === 0 ? 0 : ((current - 1) * perPage) + 1;
+    const end = total === 0 ? 0 : Math.min(start + count - 1, total);
+    status.textContent = `显示 ${start}-${end} 条，共 ${total} 条`;
+
+    if (total === 0 || pages <= 1) {
+        nav.innerHTML = '';
+        return;
+    }
+
+    const visiblePages = [...new Set([1, pages, current, current - 1, current + 1])]
+        .filter(page => page >= 1 && page <= pages)
+        .sort((a, b) => a - b);
+    const parts = [`<button ${current <= 1 ? 'disabled' : ''} onclick="loadHistoryData(${current - 1})"><i class="fas fa-chevron-left"></i></button>`];
+    let previous = 0;
+    visiblePages.forEach(page => {
+        if (previous && page - previous > 1) parts.push('<span>...</span>');
+        parts.push(`<button class="${page === current ? 'active' : ''}" onclick="loadHistoryData(${page})">${page}</button>`);
+        previous = page;
+    });
+    parts.push(`<button ${current >= pages ? 'disabled' : ''} onclick="loadHistoryData(${current + 1})"><i class="fas fa-chevron-right"></i></button>`);
+    nav.innerHTML = parts.join('');
 }
 
 function updateRecentActivityTable() {

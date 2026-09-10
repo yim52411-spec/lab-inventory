@@ -301,6 +301,7 @@
                                     <th><input type="checkbox"></th>
                                     <th>物料编号</th>
                                     <th>物料名称</th>
+                                    <th>批次</th>
                                     <th>分类</th>
                                     <th>规格</th>
                                     <th>库存数量</th>
@@ -693,9 +694,9 @@
                         <div class="search-filter">
                             <div class="search-box">
                                 <i class="fas fa-search"></i>
-                                <input type="text" placeholder="搜索操作内容...">
+                                <input id="history-keyword" type="text" placeholder="搜索物品名称...">
                             </div>
-                            <select class="filter-select">
+                            <select id="history-type-filter" class="filter-select">
                                 <option value="">操作类型</option>
                                 <option value="in">入库</option>
                                 <option value="out">出库</option>
@@ -703,9 +704,9 @@
                                 <option value="return">归还</option>
                                 <option value="purchase">采购</option>
                             </select>
-                            <input type="date" class="filter-select" placeholder="开始日期">
-                            <input type="date" class="filter-select" placeholder="结束日期">
-                            <button class="btn btn-primary">查询</button>
+                            <input id="history-start-date" type="date" class="filter-select" placeholder="开始日期">
+                            <input id="history-end-date" type="date" class="filter-select" placeholder="结束日期">
+                            <button id="history-search-btn" type="button" class="btn btn-primary">查询</button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -761,15 +762,8 @@
                             </tbody>
                         </table>
                         <div class="pagination">
-                            <span>显示 1-4 条，共 3,456 条</span>
+                            <span>显示 0-0 条，共 0 条</span>
                             <div class="page-nav">
-                                <button disabled><i class="fas fa-chevron-left"></i></button>
-                                <button class="active">1</button>
-                                <button>2</button>
-                                <button>3</button>
-                                <span>...</span>
-                                <button>692</button>
-                                <button><i class="fas fa-chevron-right"></i></button>
                             </div>
                         </div>
                     </div>
@@ -833,6 +827,7 @@
                                 <tr>
                                     <th>物料编号</th>
                                     <th>物料名称</th>
+                                    <th>批次</th>
                                     <th>当前库存</th>
                                     <th>预警阈值</th>
                                     <th>缺口数量</th>
@@ -1173,6 +1168,22 @@
                     <input type="number" id="stock-in-quantity" min="1" placeholder="请输入数量" required>
                 </div>
                 <div class="form-group">
+                    <label>批次号</label>
+                    <input type="text" id="stock-in-batch-no" placeholder="可填写供应商批次号">
+                </div>
+                <div class="form-group">
+                    <label>生产日期</label>
+                    <input type="date" id="stock-in-production-date">
+                </div>
+                <div class="form-group">
+                    <label>到期日期</label>
+                    <input type="date" id="stock-in-expiry-date">
+                </div>
+                <div class="form-group">
+                    <label>保质期天数</label>
+                    <input type="number" id="stock-in-shelf-life-days" min="0" placeholder="未填到期日期时计算">
+                </div>
+                <div class="form-group">
                     <label>入库类型</label>
                     <select id="stock-in-type">
                         <option value="purchase">采购入库</option>
@@ -1189,6 +1200,43 @@
         <div class="modal-footer">
             <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
             <button class="btn btn-success" onclick="handleStockIn()">确认入库</button>
+        </div>
+    </div>
+
+    <!-- 出库模态框 -->
+    <div id="purchase-inbound-modal" class="modal">
+        <div class="modal-header">
+            <h3><i class="fas fa-box-open"></i> 采购入库信息</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <p class="form-hint">批次、生产日期、到期日期和保质期均可留空，留空后直接入库。</p>
+            <form class="form-grid" id="purchase-inbound-form" onsubmit="event.preventDefault(); confirmPurchaseInbound();">
+                <div class="form-group">
+                    <label>实际入库数量 <span class="required">*</span></label>
+                    <input type="number" id="purchase-inbound-quantity" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label>采购批次</label>
+                    <input type="text" id="purchase-inbound-batch-no" placeholder="可留空自动生成">
+                </div>
+                <div class="form-group">
+                    <label>生产日期</label>
+                    <input type="text" id="purchase-inbound-production-date" placeholder="如 2026-08-08、9/9">
+                </div>
+                <div class="form-group">
+                    <label>到期日期</label>
+                    <input type="text" id="purchase-inbound-expiry-date" placeholder="如 2026/8/8、9-9">
+                </div>
+                <div class="form-group">
+                    <label>保质期天数</label>
+                    <input type="number" id="purchase-inbound-shelf-life-days" min="0" placeholder="到期日期为空时计算">
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">取消</button>
+            <button class="btn btn-success" onclick="confirmPurchaseInbound()">确定入库</button>
         </div>
     </div>
 

@@ -130,6 +130,7 @@ class Material(db.Model):
     borrow_records = db.relationship('BorrowRecord', backref='material', lazy='dynamic')
     operation_records = db.relationship('OperationRecord', backref='material', lazy='dynamic')
     alerts = db.relationship('Alert', backref='material', lazy='dynamic')
+    batches = db.relationship('MaterialBatch', backref='material', lazy='dynamic', cascade='all, delete-orphan')
     
     def update_status(self):
         """根据库存更新状态"""
@@ -156,7 +157,37 @@ class Material(db.Model):
             'supplier_name': self.supplier.name if self.supplier else None,
             'remark': self.remark,
             'status': self.status,
+            'batches': [batch.to_dict() for batch in self.batches.order_by(MaterialBatch.received_at.asc()).all()],
             'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None
+        }
+
+
+class MaterialBatch(db.Model):
+    """同一物料的独立采购入库批次，支持先进先出和批次级到期预警。"""
+    __tablename__ = 'material_batches'
+
+    id = db.Column(db.Integer, primary_key=True)
+    material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=False, index=True)
+    batch_no = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    production_date = db.Column(db.Date)
+    received_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expiry_date = db.Column(db.Date)
+    shelf_life_days = db.Column(db.Integer)
+    quantity_received = db.Column(db.Integer, nullable=False)
+    quantity_remaining = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'material_id': self.material_id,
+            'batch_no': self.batch_no,
+            'production_date': self.production_date.isoformat() if self.production_date else None,
+            'received_at': self.received_at.strftime('%Y-%m-%d %H:%M:%S') if self.received_at else None,
+            'expiry_date': self.expiry_date.isoformat() if self.expiry_date else None,
+            'shelf_life_days': self.shelf_life_days,
+            'quantity_received': self.quantity_received,
+            'quantity_remaining': self.quantity_remaining,
         }
 
 
@@ -304,7 +335,8 @@ class Alert(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     material_id = db.Column(db.Integer, db.ForeignKey('materials.id'), nullable=False)
-    alert_type = db.Column(db.String(20), default='stock_low')  # stock_low, out_of_stock
+    batch_id = db.Column(db.Integer, db.ForeignKey('material_batches.id'), nullable=True, index=True)
+    alert_type = db.Column(db.String(20), default='stock_low')  # stock_low, expiry
     level = db.Column(db.String(20), default='warning')  # warning, danger
     current_stock = db.Column(db.Integer)
     threshold = db.Column(db.Integer)
@@ -313,6 +345,7 @@ class Alert(db.Model):
     is_resolved = db.Column(db.Boolean, default=False)  # 是否已解决
     resolved_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    batch = db.relationship('MaterialBatch', backref='alerts')
     
     def to_dict(self):
         return {
@@ -320,6 +353,10 @@ class Alert(db.Model):
             'material_id': self.material_id,
             'material_name': self.material.name if self.material else None,
             'material_code': self.material.code if self.material else None,
+            'batch_id': self.batch_id,
+            'batch_no': self.batch.batch_no if self.batch else None,
+            'production_date': self.batch.production_date.isoformat() if self.batch and self.batch.production_date else None,
+            'expiry_date': self.batch.expiry_date.isoformat() if self.batch and self.batch.expiry_date else None,
             'alert_type': self.alert_type,
             'level': self.level,
             'current_stock': self.current_stock,

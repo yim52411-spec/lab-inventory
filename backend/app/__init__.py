@@ -81,6 +81,24 @@ def create_app(config_name='default'):
     # 创建上传目录
     import os
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+    # 后台每分钟检查一次，具体频率由系统设置中的 alert_check_interval 决定。
+    # Flask debug reloader 会创建父子两个进程；只让实际服务进程启动调度器，避免重复检查/发信。
+    scheduler_process = not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+    if not app.testing and scheduler_process:
+        from flask_apscheduler import APScheduler
+        scheduler = APScheduler()
+        scheduler.init_app(app)
+        scheduler.add_job(
+            id='alert-and-backup-check',
+            func='app.api.scheduler:run_scheduled_tasks',
+            args=[app],
+            trigger='interval',
+            minutes=1,
+            replace_existing=True,
+        )
+        scheduler.start()
+        app.extensions['scheduler'] = scheduler
     
     return app
 

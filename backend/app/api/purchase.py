@@ -177,7 +177,7 @@ def complete_purchase(id):
     if purchase.status != 'approved':
         return jsonify({'success': False, 'message': '该申请未通过审批'}), 400
     
-    data = request.get_json()
+    data = request.get_json() or {}
     actual_quantity = data.get('actual_quantity', purchase.quantity)
     
     # 更新申请状态
@@ -188,11 +188,17 @@ def complete_purchase(id):
         material = find_matching_material(purchase.material_name, purchase.spec, purchase.category_id)
 
     if material:
+        from app.api.inventory import create_batch
         stock_before = material.stock
         material.stock += actual_quantity
         material.update_status()
         sync_material_alert(material)
         purchase.material_id = material.id
+        try:
+            batch = create_batch(material, data, actual_quantity)
+        except (ValueError, TypeError) as exc:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(exc)}), 400
 
         record = OperationRecord(
             operation_no=generate_code('I'),
@@ -222,6 +228,12 @@ def complete_purchase(id):
         material.update_status()
         db.session.add(material)
         db.session.flush()
+        from app.api.inventory import create_batch
+        try:
+            batch = create_batch(material, data, actual_quantity)
+        except (ValueError, TypeError) as exc:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(exc)}), 400
         
         # 更新采购申请关联的物料ID
         purchase.material_id = material.id
@@ -247,7 +259,7 @@ def complete_purchase(id):
     return jsonify({
         'success': True,
         'message': '采购完成并已入库',
-        'data': purchase.to_dict()
+        'data': {**purchase.to_dict(), 'batch': batch.to_dict()}
     })
 
 

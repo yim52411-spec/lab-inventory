@@ -166,6 +166,12 @@ def approve_borrow(id):
             'message': f'库存不足，当前库存: {material.stock}'
         }), 400
 
+    from app.api.inventory import consume_batches
+    try:
+        consume_batches(material, borrow.quantity)
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+
     stock_before = material.stock
     material.stock -= borrow.quantity
     material.update_status()

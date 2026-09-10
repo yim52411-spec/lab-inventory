@@ -8,6 +8,34 @@ from datetime import timedelta
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+def load_local_mail_config():
+    """仅从项目 .env 加载邮件配置，避免覆盖本地 SQLite 数据库配置。"""
+    env_path = os.path.join(os.path.dirname(BASE_DIR), '.env')
+    mail_keys = {
+        'MAIL_SERVER', 'MAIL_PORT', 'MAIL_USE_TLS', 'MAIL_USE_SSL',
+        'MAIL_USERNAME', 'MAIL_PASSWORD', 'MAIL_DEFAULT_SENDER'
+    }
+    try:
+        with open(env_path, encoding='utf-8') as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                key = key.strip()
+                if key not in mail_keys or os.environ.get(key) is not None:
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+                os.environ[key] = value
+    except OSError:
+        pass
+
+
+load_local_mail_config()
+
+
 class Config:
     """基础配置"""
     
@@ -28,7 +56,8 @@ class Config:
     # 邮件配置 - 用于库存预警通知
     MAIL_SERVER = os.environ.get('MAIL_SERVER') or 'smtp.gmail.com'
     MAIL_PORT = int(os.environ.get('MAIL_PORT') or 587)
-    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() in ['true', 'on', '1']
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'false' if MAIL_PORT == 465 else 'true').lower() in ['true', 'on', '1']
+    MAIL_USE_SSL = os.environ.get('MAIL_USE_SSL', 'true' if MAIL_PORT == 465 else 'false').lower() in ['true', 'on', '1']
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER')
@@ -51,6 +80,7 @@ class Config:
             'CORS_ORIGINS',
             'http://localhost,http://localhost:80,http://localhost:8080,'
             'http://127.0.0.1,http://127.0.0.1:8080,'
+            'http://localhost:5001,http://127.0.0.1:5001,'
             ''
         ).split(',')
         if origin.strip()
