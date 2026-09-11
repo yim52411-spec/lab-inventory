@@ -767,22 +767,21 @@ function viewPurchase(id) {
         || AppState.purchaseSummary?.latest?.find(p => p.id === id);
     if (!item) return;
     const category = AppState.categories?.find(c => Number(c.id) === Number(item.category_id));
-    const details = [
-        `申请单号：${item.request_no}`,
-        `状态：${getPurchaseStatusText(item.status)}`,
-        `申请人：${item.requester_name || '-'}`,
-        `物料名称：${item.material_name || '-'}`,
-        `物料分类：${category?.name || item.category_name || '-'}`,
-        `规格：${item.spec || '-'}`,
-        `数量：${item.quantity || '-'}`,
-        `预计单价：${item.estimated_price ?? '-'}`,
-        `采购链接：${item.supplier_link || '-'}`,
-        `申请理由：${item.reason || '-'}`,
-        `备注：${item.remark || '-'}`,
-        `审批备注：${item.approval_remark || '-'}`,
-        `提交时间：${item.created_at || '-'}`
-    ].join('\n');
-    alert(details);
+    showDetailModal('采购申请详情', [
+        ['申请单号', item.request_no],
+        ['状态', getPurchaseStatusText(item.status)],
+        ['申请人', item.requester_name],
+        ['物料名称', item.material_name],
+        ['物料分类', category?.name || item.category_name],
+        ['规格', item.spec],
+        ['数量', item.quantity],
+        ['预计单价', item.estimated_price],
+        ['采购链接', item.supplier_link],
+        ['申请理由', item.reason, true],
+        ['备注', item.remark, true],
+        ['审批备注', item.approval_remark, true],
+        ['提交时间', item.created_at]
+    ]);
 }
 
 function openPurchaseLink(id) {
@@ -901,6 +900,26 @@ function closeAllModals() {
         modal.classList.remove('active');
     });
     document.getElementById('modal-overlay').classList.remove('active');
+}
+
+/**
+ * 通用详情预览弹窗
+ * fields: [{ label, value, full? }] 或 [[label, value], ...]，value 为空时显示 '-'
+ */
+function showDetailModal(title, fields) {
+    const titleEl = document.getElementById('detail-modal-title');
+    const bodyEl = document.getElementById('detail-modal-body');
+    if (!titleEl || !bodyEl) return;
+
+    titleEl.innerHTML = `<i class="fas fa-info-circle"></i> ${title}`;
+    const normalized = fields.map(f => Array.isArray(f) ? { label: f[0], value: f[1] } : f);
+    bodyEl.innerHTML = normalized.map(f => `
+        <div class="detail-item${f.full ? ' full-width' : ''}">
+            <div class="detail-label">${f.label}</div>
+            <div class="detail-value">${(f.value ?? null) !== null && f.value !== '' && f.value !== undefined ? f.value : '-'}</div>
+        </div>
+    `).join('');
+    showModal('detail-modal');
 }
 
 /**
@@ -1162,6 +1181,8 @@ window.deleteMaterial = deleteMaterial;
 window.viewMaterial = viewMaterial;
 window.handleBorrowSubmit = handleBorrowSubmit;
 window.viewBorrow = viewBorrow;
+window.viewOperationRecord = viewOperationRecord;
+window.resolveAlert = resolveAlert;
 window.handleUserCreate = handleUserCreate;
 window.deleteUser = deleteUser;
 window.viewPurchase = viewPurchase;
@@ -1181,15 +1202,16 @@ function updateMaterialsTable() {
     updateInventoryPagination();
 
     if (AppState.materials.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center">暂无在库样品/物料</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center">暂无在库样品/物料</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = AppState.materials.map(m => `
         <tr>
             <td></td>
             <td>${m.code}</td>
             <td>${m.name}</td>
+            <td>${m.batches?.length ? m.batches.length : '-'}</td>
             <td>${m.category_name || '-'}</td>
             <td>${m.spec || '-'}</td>
             <td>${m.stock} ${m.unit}</td>
@@ -2145,17 +2167,36 @@ function viewBorrow(id) {
     const item = AppState.borrows?.find(b => b.id === id)
         || AppState.borrowSummary?.latest?.find(b => b.id === id);
     if (!item) return;
-    const details = [
-        `借用单号：${item.borrow_no}`,
-        `状态：${getBorrowStatusText(item.status)}`,
-        `物料名称：${item.material_name || '-'}`,
-        `借用人：${item.borrower_name || '-'}`,
-        `数量：${item.quantity || '-'}`,
-        `预计归还：${item.expected_return_date || '-'}`,
-        `实际归还：${item.actual_return_date || '-'}`,
-        `借用理由：${item.reason || '-'}`
-    ].join('\n');
-    alert(details);
+    showDetailModal('借用详情', [
+        ['借用单号', item.borrow_no],
+        ['状态', getBorrowStatusText(item.status)],
+        ['物料名称', item.material_name],
+        ['借用人', item.borrower_name],
+        ['数量', item.quantity],
+        ['借用时间', item.borrow_date],
+        ['预计归还', item.expected_return_date],
+        ['实际归还', item.actual_return_date],
+        ['借用理由', item.reason, true],
+        ['备注', item.remark, true]
+    ]);
+}
+
+function viewOperationRecord(id) {
+    const item = AppState.inventoryRecords?.find(r => Number(r.id) === Number(id));
+    if (!item) return;
+    const relatedMap = { purchase: '采购申请', borrow: '借用记录' };
+    showDetailModal('出入库记录详情', [
+        ['操作单号', item.operation_no],
+        ['类型', item.type_name || item.type],
+        ['物料名称', item.material_name],
+        ['数量', `${item.quantity > 0 ? '+' : ''}${item.quantity}`],
+        ['操作前库存', item.stock_before],
+        ['操作后库存', item.stock_after],
+        ['操作人', item.operator_name],
+        ['关联单据', item.related_type ? `${relatedMap[item.related_type] || item.related_type} #${item.related_id}` : null],
+        ['备注', item.remark, true],
+        ['操作时间', item.created_at]
+    ]);
 }
 
 /**
@@ -2257,7 +2298,7 @@ function updateInventoryRecordsTable() {
             <td>${r.operator_name || '-'}</td>
             <td>${r.created_at || '-'}</td>
             <td><span class="status completed">已完成</span></td>
-            <td><button class="btn btn-sm btn-outline" onclick="showNotification('记录详情', '${r.operation_no}', 'info')">查看</button></td>
+            <td><button class="btn btn-sm btn-outline" onclick="viewOperationRecord(${r.id})">查看</button></td>
         </tr>
     `).join('');
 }
@@ -2367,20 +2408,49 @@ function updateAlertsTable() {
         return;
     }
 
-    tbody.innerHTML = AppState.alerts.map(a => `
+    tbody.innerHTML = AppState.alerts.map(a => {
+        // 到期预警跟踪的是单个批次的剩余量，与物料总库存无关，明确标注避免误解
+        const isExpiry = a.alert_type === 'expiry';
+        const stockText = isExpiry ? `批次剩余 ${a.current_stock}` : a.current_stock;
+        const gapText = isExpiry ? '-' : Number(a.current_stock || 0) - Number(a.threshold || 0);
+        return `
         <tr>
             <td>${a.material_code || '-'}</td>
             <td>${a.material_name || '-'}</td>
             <td>${a.batch_no || '-'}</td>
-            <td>${a.current_stock}</td>
-            <td>${a.threshold}</td>
-            <td class="${a.level === 'danger' ? 'text-danger' : 'text-warning'}">${Number(a.current_stock || 0) - Number(a.threshold || 0)}</td>
+            <td>${stockText}</td>
+            <td>${isExpiry ? '-' : a.threshold}</td>
+            <td class="${a.level === 'danger' ? 'text-danger' : 'text-warning'}">${gapText}</td>
             <td><span class="status-badge ${a.level}">${a.alert_type === 'expiry' ? '到期预警' : (a.level === 'danger' ? '严重不足' : '库存预警')}</span></td>
             <td>${a.is_sent ? '已发送' : '未发送'}</td>
-            <td><button class="btn btn-sm btn-primary" onclick="purchaseMaterial(${a.material_id})">申请采购</button></td>
+            <td>
+                ${isExpiry
+                    ? `<button class="btn btn-sm btn-warning" onclick="resolveAlert(${a.id})">标记已处理</button>`
+                    : `<button class="btn btn-sm btn-primary" onclick="purchaseMaterial(${a.material_id})">申请采购</button>`}
+            </td>
         </tr>
-    `).join('');
+    `}).join('');
     updateAlertBadges();
+}
+
+/**
+ * 标记到期预警为已处理（管理员）。
+ * 适用场景：过期批次已报废/不再占用库存。如需同步修正库存，请先做出库。
+ */
+async function resolveAlert(id) {
+    if (!requireAdminAction()) return;
+    if (!confirm('确定该批次按过期报废处理吗？\n报废后：批次剩余数量将从当前库存中扣减，并写入出库记录留档（备份导出可查），预警不再提示。')) return;
+    try {
+        const result = await API.Alert.resolve(id);
+        if (result.success) {
+            showNotification('成功', result.message || '预警已标记为已解决', 'success');
+            await loadAlertsData();
+        } else {
+            showNotification('失败', result.message || '操作失败', 'error');
+        }
+    } catch (error) {
+        showNotification('错误', error.message || '网络错误', 'error');
+    }
 }
 
 function updateAlertStats() {

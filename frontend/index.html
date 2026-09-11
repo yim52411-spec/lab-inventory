@@ -316,6 +316,7 @@
                                     <td><input type="checkbox"></td>
                                     <td>M2024001</td>
                                     <td>乙醇 (分析纯)</td>
+                                    <td>1</td>
                                     <td>化学试剂</td>
                                     <td>500ml/瓶</td>
                                     <td>2瓶</td>
@@ -332,6 +333,7 @@
                                     <td><input type="checkbox"></td>
                                     <td>M2024002</td>
                                     <td>离心管 15ml</td>
+                                    <td>2</td>
                                     <td>实验耗材</td>
                                     <td>50个/包</td>
                                     <td>15个</td>
@@ -1090,6 +1092,20 @@
 
     <!-- 模态框 -->
     <div id="modal-overlay" class="modal-overlay" onclick="closeAllModals()"></div>
+
+    <!-- 通用详情预览模态框（查看采购/借用/出入库记录） -->
+    <div id="detail-modal" class="modal">
+        <div class="modal-header">
+            <h3 id="detail-modal-title"><i class="fas fa-info-circle"></i> 详情</h3>
+            <button class="modal-close" onclick="closeAllModals()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="detail-grid" id="detail-modal-body"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="closeAllModals()">关闭</button>
+        </div>
+    </div>
 
     <!-- 新增物料模态框 -->
     <div id="add-material-modal" class="modal">
