@@ -46,12 +46,13 @@ services:
       - INITIAL_VISITOR_USERNAME=${INITIAL_VISITOR_USERNAME:-visitor}
       - INITIAL_VISITOR_PASSWORD=${INITIAL_VISITOR_PASSWORD:?请在 .env 中设置 INITIAL_VISITOR_PASSWORD}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
-      - MAIL_SERVER=smtp.gmail.com
-      - MAIL_PORT=587
-      - MAIL_USE_TLS=true
-      - MAIL_USERNAME=your_email@gmail.com
-      - MAIL_PASSWORD=your_email_password
-      - MAIL_DEFAULT_SENDER=your_email@gmail.com
+      - MAIL_SERVER=${MAIL_SERVER:-smtp.gmail.com}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
+      - MAIL_USE_SSL=${MAIL_USE_SSL:-false}
+      - MAIL_USERNAME=${MAIL_USERNAME:?请在 .env 中设置 MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:?请在 .env 中设置 MAIL_PASSWORD}
+      - MAIL_DEFAULT_SENDER=${MAIL_DEFAULT_SENDER:?请在 .env 中设置 MAIL_DEFAULT_SENDER}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/logs:/app/logs

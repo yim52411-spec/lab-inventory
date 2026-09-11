@@ -4,13 +4,14 @@
 # =========================
 # 构建阶段
 # =========================
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# 安装 Python 依赖编译所需工具
+# 安装 Python 依赖编译所需工具（加超时与重试，网络波动时自动重试）
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        -o Acquire::Retries=5 -o Acquire::http::Timeout=30 \
         gcc \
         default-libmysqlclient-dev \
         pkg-config \
@@ -26,13 +27,14 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # =========================
 # 运行阶段
 # =========================
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# 只安装运行时依赖
+# 只安装运行时依赖（加超时与重试）
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        -o Acquire::Retries=5 -o Acquire::http::Timeout=30 \
         libmariadb3 \
         curl \
     && rm -rf /var/lib/apt/lists/*
