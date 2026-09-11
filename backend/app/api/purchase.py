@@ -228,6 +228,8 @@ def complete_purchase(id):
         material.update_status()
         db.session.add(material)
         db.session.flush()
+        # 新物料入库后同样同步预警状态，避免遗漏（如入库量低于默认阈值时应产生预警）
+        sync_material_alert(material)
         from app.api.inventory import create_batch
         try:
             batch = create_batch(material, data, actual_quantity)

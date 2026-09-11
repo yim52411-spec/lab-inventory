@@ -360,6 +360,11 @@ const AlertAPI = {
     // 检查库存预警
     async check() {
         return await apiRequest('/alerts/check', { method: 'POST' });
+    },
+
+    // 标记预警已处理（管理员）
+    async resolve(id) {
+        return await apiRequest(`/alerts/${id}/resolve`, { method: 'POST' });
     }
 };
 

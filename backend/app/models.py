@@ -324,7 +324,8 @@ class OperationRecord(db.Model):
             'borrow': '借用',
             'return': '归还',
             'purchase': '采购入库',
-            'adjust': '库存调整'
+            'adjust': '库存调整',
+            'scrap': '过期报废'
         }
         return type_names.get(self.type, self.type)
 

@@ -11,10 +11,10 @@ def generate_code(prefix=''):
     例如: M202401150001, I202401150001
     """
     from app import db
-    from app.models import Material, OperationRecord, PurchaseRequest, BorrowRecord
-    
+    from app.models import Material, MaterialBatch, OperationRecord, PurchaseRequest, BorrowRecord
+
     today = datetime.now().strftime('%Y%m%d')
-    
+
     # 根据前缀确定查询哪个模型
     model_map = {
         'M': Material,
@@ -23,6 +23,7 @@ def generate_code(prefix=''):
         'P': PurchaseRequest,
         'B': BorrowRecord,
         'A': OperationRecord,
+        'BT': MaterialBatch,
     }
     
     model = model_map.get(prefix, Material)
@@ -43,6 +44,10 @@ def generate_code(prefix=''):
         last = model.query.filter(
             model.request_no.like(f'{today_prefix}%')
         ).order_by(model.request_no.desc()).first()
+    elif prefix == 'BT':
+        last = model.query.filter(
+            model.batch_no.like(f'{today_prefix}%')
+        ).order_by(model.batch_no.desc()).first()
     else:
         last = model.query.filter(
             model.borrow_no.like(f'{today_prefix}%')
@@ -56,6 +61,8 @@ def generate_code(prefix=''):
             last_num = int(last.operation_no[-4:])
         elif prefix == 'P':
             last_num = int(last.request_no[-4:])
+        elif prefix == 'BT':
+            last_num = int(last.batch_no[-4:])
         else:
             last_num = int(last.borrow_no[-4:])
         new_num = last_num + 1

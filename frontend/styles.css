@@ -1352,3 +1352,36 @@ body {
 body.visitor-role .admin-only {
     display: none !important;
 }
+
+/* 通用详情预览弹窗字段网格 */
+.detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 24px;
+}
+
+.detail-grid .detail-item {
+    min-width: 0;
+}
+
+.detail-grid .detail-label {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    margin-bottom: 4px;
+}
+
+.detail-grid .detail-value {
+    font-size: 14px;
+    color: var(--text-color, #333);
+    word-break: break-all;
+}
+
+.detail-grid .detail-item.full-width {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+    .detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
