@@ -175,11 +175,13 @@ def ensure_scheduled_alert_check():
                 return
         except ValueError:
             pass
-    new_alerts = sync_all_alerts()
+    sync_all_alerts()
     db.session.commit()
     set_setting_value('last_alert_check_at', now.strftime('%Y-%m-%d %H:%M:%S'))
     db.session.commit()
-    if new_alerts and get_setting_value('alert_email_enabled') == 'true':
+    # 只要有未发送预警就尝试发送（不要求本次新产生），避免 SMTP 暂时故障时预警静默积压。
+    # send_pending_alert_emails 内部会自行判断无待发/未配置时直接返回 0。
+    if get_setting_value('alert_email_enabled') == 'true':
         send_pending_alert_emails()
 
 
