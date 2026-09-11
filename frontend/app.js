@@ -1524,37 +1524,56 @@ function renderTrendEmpty(container, message, meta) {
 
 function renderTrendChart(container, config) {
     const allValues = config.series.flatMap(series => series.values.map(point => Number(point.value || 0)));
-    const maxValue = Math.max(...allValues, 1);
-    const minValue = Math.min(...allValues, 0);
-    const range = Math.max(maxValue - minValue, 1);
     const width = 520;
     const height = 210;
-    const padding = { top: 28, right: 24, bottom: 46, left: 48 };
+    const padding = { top: 16, right: 16, bottom: 34, left: 48 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
     const labels = config.series[0]?.values.map(point => point.label) || [];
+
+    // Y 轴刻度取整（nice number），5 档
+    const rawMax = Math.max(...allValues, 1);
+    const rawMin = Math.min(...allValues, 0);
+    const niceStep = rawMax <= 5 ? 1 : Math.pow(10, Math.floor(Math.log10(rawMax))) / 2;
+    const maxValue = Math.ceil(rawMax / niceStep) * niceStep;
+    const minValue = rawMin > 0 ? Math.floor(rawMin / niceStep) * niceStep : 0;
+    const range = Math.max(maxValue - minValue, 1);
+    const ticks = Array.from({ length: 5 }, (_, i) => minValue + (range * i) / 4);
+
     const xFor = index => padding.left + (labels.length <= 1 ? chartWidth / 2 : (index / (labels.length - 1)) * chartWidth);
     const yFor = value => padding.top + chartHeight - ((Number(value || 0) - minValue) / range) * chartHeight;
-    const ticks = [maxValue, Math.round((maxValue + minValue) / 2), minValue];
 
-    const seriesSvg = config.series.map(series => {
+    // 每个系列：渐变面积 + 折线 + hover 热区（数值移入气泡）
+    const seriesSvg = config.series.map((series, sIndex) => {
+        const gradId = `trend-grad-${container.id}-${sIndex}`;
         const points = series.values.map((point, index) => `${xFor(index)},${yFor(point.value)}`).join(' ');
+        const areaPoints = `${padding.left},${yFor(minValue)} ${points} ${xFor(series.values.length - 1)},${yFor(minValue)}`;
         const markers = series.values.map((point, index) => {
             const x = xFor(index);
             const y = yFor(point.value);
             const label = point.displayValue || point.value;
             return `
-                <g class="trend-marker">
-                    <circle cx="${x}" cy="${y}" r="4" fill="${series.color}"></circle>
-                    <text x="${x}" y="${Math.max(14, y - 9)}" text-anchor="middle">${label}</text>
+                <g class="trend-point-group" data-label="${point.label}" data-detail="${point.detail || series.name}" data-value="${label}">
+                    <circle class="trend-point" cx="${x}" cy="${y}" r="4" fill="${series.color}"></circle>
+                    <rect class="trend-hit-area" x="${x - 12}" y="${y - 16}" width="24" height="32"></rect>
                 </g>
             `;
         }).join('');
         return `
-            <polyline class="trend-line" points="${points}" fill="none" stroke="${series.color}" />
+            <defs>
+                <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="${series.color}" stop-opacity="0.22"></stop>
+                    <stop offset="100%" stop-color="${series.color}" stop-opacity="0"></stop>
+                </linearGradient>
+            </defs>
+            <polygon class="trend-area" points="${areaPoints}" fill="url(#${gradId})"></polygon>
+            <polyline class="trend-line" points="${points}" fill="none" stroke="${series.color}"></polyline>
             ${markers}
         `;
     }).join('');
+
+    // X 轴标签过多时隔行显示
+    const labelSkip = labels.length > 7 ? Math.ceil(labels.length / 6) : 1;
 
     container.innerHTML = `
         <div class="trend-chart-heading">
@@ -1563,20 +1582,62 @@ function renderTrendChart(container, config) {
                 ${config.series.map(series => `<span><i style="background:${series.color}"></i>${series.name}</span>`).join('')}
             </div>
         </div>
-        <svg class="trend-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img">
-            <line class="trend-axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
-            <line class="trend-axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}"></line>
+        <svg class="trend-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
             ${ticks.map(tick => `
                 <line class="trend-grid-line" x1="${padding.left}" y1="${yFor(tick)}" x2="${width - padding.right}" y2="${yFor(tick)}"></line>
-                <text class="trend-y-label" x="${padding.left - 8}" y="${yFor(tick) + 4}" text-anchor="end">${tick}</text>
+                <text class="trend-y-label" x="${padding.left - 8}" y="${yFor(tick) + 4}" text-anchor="end">${formatMoney(tick)}</text>
             `).join('')}
+            <line class="trend-axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
+            <line class="trend-axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}"></line>
             ${seriesSvg}
-            ${labels.map((label, index) => `<text class="trend-x-label" x="${xFor(index)}" y="${height - 18}" text-anchor="middle">${label}</text>`).join('')}
+            ${labels.map((label, index) => index % labelSkip === 0
+                ? `<text class="trend-x-label" x="${xFor(index)}" y="${height - 12}" text-anchor="middle">${label}</text>`
+                : '').join('')}
+            <foreignObject class="trend-tooltip" x="0" y="0" width="${width}" height="${height}" style="display:none">
+                <div xmlns="http://www.w3.org/1999/xhtml" class="trend-tooltip-card">
+                    <div class="trend-tooltip-title"></div>
+                    <div class="trend-tooltip-body"></div>
+                </div>
+            </foreignObject>
         </svg>
         <div class="chart-axis-labels">
             <span>${config.footer}</span>
         </div>
     `;
+
+    // hover 气泡逻辑
+    const svg = container.querySelector('.trend-svg');
+    const tooltip = container.querySelector('.trend-tooltip');
+    const tooltipCard = container.querySelector('.trend-tooltip-card');
+    container.querySelectorAll('.trend-point-group').forEach(group => {
+        const show = () => {
+            const title = group.dataset.label;
+            const detail = group.dataset.detail;
+            const value = group.dataset.value;
+            tooltipCard.querySelector('.trend-tooltip-title').textContent = title;
+            tooltipCard.querySelector('.trend-tooltip-body').innerHTML =
+                `<span>${detail}</span><strong>${value}</strong>`;
+            const circle = group.querySelector('.trend-point');
+            circle.setAttribute('r', '5.5');
+            const cx = Number(circle.getAttribute('cx'));
+            const cy = Number(circle.getAttribute('cy'));
+            const svgWidth = svg.clientWidth || width;
+            const cardW = 150;
+            const cardH = 56;
+            const scale = svgWidth / width;
+            const left = Math.min(Math.max(cx * scale - cardW / 2, 4), svgWidth - cardW - 4);
+            const top = Math.max(cy * scale - cardH - 12, 4);
+            tooltip.style.display = 'block';
+            tooltipCard.style.left = `${left}px`;
+            tooltipCard.style.top = `${top}px`;
+        };
+        const hide = () => {
+            tooltip.style.display = 'none';
+            group.querySelector('.trend-point').setAttribute('r', '4');
+        };
+        group.addEventListener('mouseenter', show);
+        group.addEventListener('mouseleave', hide);
+    });
 }
 
 function formatMoney(value) {
