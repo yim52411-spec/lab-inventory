@@ -6,8 +6,9 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import and_
 from datetime import datetime, timedelta, date
 from app import db, mail
-from app.models import Alert, Material, MaterialBatch, User, SystemSetting
-from app.api.auth import admin_required
+from app.models import Alert, Material, MaterialBatch, OperationRecord, User, SystemSetting
+from app.api.auth import admin_required, get_current_user_id
+from app.utils.helpers import generate_code
 from flask_mail import Message
 
 alerts_bp = Blueprint('alerts', __name__)
@@ -303,17 +304,50 @@ def send_alert_emails():
 @alerts_bp.route('/<int:id>/resolve', methods=['POST'])
 @admin_required
 def resolve_alert(id):
-    """解决预警（管理员）"""
+    """解决预警（管理员）。
+
+    到期预警（有批次且批次仍有剩余）：视为该批次过期报废——
+    扣减物料库存、批次剩余清零（避免调度器重建预警）、写入报废出库记录留档。
+    库存预警（stock_low）：仅标记解决，不涉及库存变动。
+    """
     alert = Alert.query.get_or_404(id)
-    
+
     alert.is_resolved = True
     alert.resolved_at = datetime.utcnow()
-    
+
+    scrap_quantity = 0
+    material = alert.material
+    if alert.alert_type == 'expiry' and alert.batch and alert.batch.quantity_remaining > 0 and material:
+        batch = alert.batch
+        scrap_quantity = batch.quantity_remaining
+        material.stock = max(material.stock - scrap_quantity, 0)
+        material.update_status()
+        sync_material_alert(material)
+        batch.quantity_remaining = 0
+        record = OperationRecord(
+            operation_no=generate_code('O'),
+            type='scrap',
+            user_id=get_current_user_id(),
+            material_id=material.id,
+            material_name=material.name,
+            quantity=scrap_quantity,
+            stock_before=material.stock + scrap_quantity,
+            stock_after=material.stock,
+            related_id=batch.id,
+            related_type='batch',
+            remark=f'过期报废: 批次{batch.batch_no}'
+        )
+        db.session.add(record)
+
     db.session.commit()
-    
+
+    message = '预警已标记为已解决'
+    if scrap_quantity:
+        message = f'批次已按过期报废处理，库存扣减 {scrap_quantity}，已写入出库记录留档'
+
     return jsonify({
         'success': True,
-        'message': '预警已标记为已解决',
+        'message': message,
         'data': alert.to_dict()
     })
 
