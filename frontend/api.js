@@ -14,7 +14,7 @@ const API_BASE_URLS = (() => {
         && window.location.port === '8080';
     const bases = configuredBase
         ? [configuredBase]
-        : [(isLocalStaticServer || isFileProtocol) ? 'http://127.0.0.1:5000/api' : '/api'];
+        : [(isLocalStaticServer || isFileProtocol) ? 'http://127.0.0.1:5001/api' : '/api'];
     return [...new Set(bases)];
 })();
 
@@ -371,6 +371,10 @@ const RecordAPI = {
     async getList(type = 'inventory', params = {}) {
         const queryParams = new URLSearchParams({ type, ...params }).toString();
         return await apiRequest(`/records?${queryParams}`);
+    },
+
+    async dashboard() {
+        return await apiRequest('/records/dashboard');
     }
 };
 

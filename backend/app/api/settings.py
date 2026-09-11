@@ -20,6 +20,7 @@ DEFAULT_SETTINGS = {
     'storage_location': ('cloud', '数据存储位置'),
     'backup_frequency': ('daily', '自动备份频率'),
     'last_backup_at': ('', '最近一次数据库备份时间')
+    , 'last_alert_check_at': ('', '最近一次预警检查时间')
 }
 
 
@@ -51,7 +52,8 @@ def get_sqlite_database_path():
 
 def create_excel_backup(reason='manual'):
     backend_dir = os.path.dirname(current_app.root_path)
-    backup_dir = os.path.join(backend_dir, 'backups')
+    project_dir = os.path.dirname(backend_dir)
+    backup_dir = os.path.join(project_dir, 'database-backups')
     os.makedirs(backup_dir, exist_ok=True)
 
     from openpyxl import Workbook
@@ -159,6 +161,28 @@ def ensure_scheduled_backup():
     }
     if datetime.now() - last_backup >= intervals.get(frequency, timedelta(days=1)):
         create_excel_backup('auto')
+
+
+def ensure_scheduled_alert_check():
+    """由应用级调度器每分钟调用，按系统设置决定是否执行预警检查。"""
+    from app.api.alerts import sync_all_alerts, send_pending_alert_emails
+    interval = int(get_setting_value('alert_check_interval') or 30)
+    last = get_setting_value('last_alert_check_at')
+    now = datetime.utcnow()
+    if last:
+        try:
+            if (now - datetime.strptime(last, '%Y-%m-%d %H:%M:%S')).total_seconds() < interval * 60:
+                return
+        except ValueError:
+            pass
+    sync_all_alerts()
+    db.session.commit()
+    set_setting_value('last_alert_check_at', now.strftime('%Y-%m-%d %H:%M:%S'))
+    db.session.commit()
+    # 只要有未发送预警就尝试发送（不要求本次新产生），避免 SMTP 暂时故障时预警静默积压。
+    # send_pending_alert_emails 内部会自行判断无待发/未配置时直接返回 0。
+    if get_setting_value('alert_email_enabled') == 'true':
+        send_pending_alert_emails()
 
 
 @settings_bp.route('', methods=['GET'])

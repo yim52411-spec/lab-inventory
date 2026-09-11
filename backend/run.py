@@ -4,6 +4,9 @@
 import os
 import sys
 
+# 本地直接启动默认使用 config.py 中的 SQLite；生产环境通过 Gunicorn/Docker 显式注入 DATABASE_URL。
+os.environ.setdefault('FLASK_SKIP_DOTENV', '1')
+
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -146,4 +149,4 @@ def check_alerts():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', '5000')), debug=app.debug)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', '5001')), debug=app.debug)
