@@ -705,9 +705,57 @@ body {
     font-size: 11px;
 }
 
-.trend-marker text {
-    font-weight: 700;
-    fill: var(--text-primary);
+.trend-point {
+    stroke: #fff;
+    stroke-width: 2;
+    transition: r 0.15s ease;
+}
+
+.trend-hit-area {
+    fill: transparent;
+}
+
+.trend-point-group {
+    cursor: pointer;
+}
+
+.trend-tooltip-card {
+    position: absolute;
+    min-width: 130px;
+    max-width: 160px;
+    padding: 8px 10px;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.trend-tooltip-title {
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.trend-tooltip-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.trend-tooltip-body span {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.trend-tooltip-body strong {
+    color: var(--primary-color);
+    white-space: nowrap;
 }
 
 .trend-empty {
