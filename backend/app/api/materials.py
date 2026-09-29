@@ -112,13 +112,38 @@ def create_material():
     )
     
     material.update_status()
-    
+
     db.session.add(material)
+    db.session.flush()
+
+    # 首批库存效期（可选）：填了批次/有效期信息时自动创建批次并纳入到期预警
+    initial_batch = data.get('initial_batch')
+    batch_created = False
+    if isinstance(initial_batch, dict) and int(stock) > 0:
+        if initial_batch.get('expiry_date') or initial_batch.get('shelf_life_days') or initial_batch.get('batch_no'):
+            try:
+                create_batch(material, initial_batch, int(stock))
+                batch_created = True
+                record = OperationRecord(
+                    operation_no=generate_code('I'), type='in', user_id=get_current_user_id(),
+                    material_id=material.id, material_name=material.name, quantity=int(stock),
+                    stock_before=0, stock_after=material.stock,
+                    related_type='initial_batch', remark='新增物料首批入库'
+                )
+                db.session.add(record)
+                sync_material_alert(material)
+            except (ValueError, TypeError) as exc:
+                db.session.rollback()
+                return jsonify({'success': False, 'message': f'首批效期信息无效: {exc}'}), 400
+
     db.session.commit()
-    
+
+    message = '物料创建成功'
+    if batch_created:
+        message = '物料创建成功，首批批次已创建并纳入到期预警'
     return jsonify({
         'success': True,
-        'message': '物料创建成功',
+        'message': message,
         'data': material.to_dict()
     }), 201
 

@@ -1680,6 +1680,20 @@ async function handleMaterialSave() {
         return;
     }
 
+    // 首批库存效期（仅新增且勾选时；编辑模式不支持改批次）
+    const batchToggle = document.getElementById('material-initial-batch-toggle');
+    if (!AppState.editingMaterialId && batchToggle && batchToggle.checked && payload.stock > 0) {
+        const initialBatch = {
+            production_date: document.getElementById('material-production-date').value || undefined,
+            expiry_date: document.getElementById('material-expiry-date').value || undefined,
+            shelf_life_days: document.getElementById('material-shelf-life-days').value || undefined,
+            batch_no: document.getElementById('material-batch-no').value.trim() || undefined
+        };
+        if (initialBatch.expiry_date || initialBatch.shelf_life_days || initialBatch.batch_no) {
+            payload.initial_batch = initialBatch;
+        }
+    }
+
     try {
         const result = AppState.editingMaterialId
             ? await API.Material.update(AppState.editingMaterialId, payload)
@@ -1688,6 +1702,7 @@ async function handleMaterialSave() {
             showNotification('成功', AppState.editingMaterialId ? '物料已更新' : '物料已新增', 'success');
             AppState.editingMaterialId = null;
             document.getElementById('material-form').reset();
+            resetInitialBatchFields();
             closeAllModals();
             await loadMaterialsData();
             await loadAlertsData();
@@ -1777,6 +1792,33 @@ async function handleMaterialImport(event) {
     } finally {
         event.target.value = '';
     }
+}
+
+/**
+ * 首批库存效期信息 - 显隐切换与重置
+ */
+function toggleInitialBatchFields(checked) {
+    document.getElementById('material-initial-batch-fields').style.display = checked ? '' : 'none';
+}
+
+function resetInitialBatchFields() {
+    const toggle = document.getElementById('material-initial-batch-toggle');
+    const fields = document.getElementById('material-initial-batch-fields');
+    if (toggle) toggle.checked = false;
+    if (fields) {
+        fields.style.display = 'none';
+        fields.querySelectorAll('input').forEach(input => { input.value = ''; });
+    }
+}
+
+/**
+ * 打开新增物料弹窗（重置编辑状态与首批效期区）
+ */
+function openAddMaterialModal() {
+    if (!requireAdminAction()) return;
+    AppState.editingMaterialId = null;
+    resetInitialBatchFields();
+    showModal('add-material-modal');
 }
 
 /**
