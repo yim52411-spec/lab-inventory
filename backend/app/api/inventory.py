@@ -225,6 +225,12 @@ def stock_out():
     material.update_status()
     sync_material_alert(material)
     
+    # 组合备注：借用人留档（不传 recipient 时行为不变，向后兼容）
+    remark = data.get('remark', '') or ''
+    recipient = (data.get('recipient') or '').strip()
+    if recipient:
+        remark = f'借用人: {recipient}；{remark}' if remark else f'借用人: {recipient}'
+
     # 创建操作记录
     record = OperationRecord(
         operation_no=generate_code('O'),
@@ -237,7 +243,7 @@ def stock_out():
         stock_after=material.stock,
         related_id=data.get('related_id'),
         related_type=data.get('related_type'),
-        remark=data.get('remark', '')
+        remark=remark
     )
     
     db.session.add(record)

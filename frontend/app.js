@@ -2432,11 +2432,11 @@ function updateInventoryRecordsTable() {
     if (AppState.activeInoutTab === 'pending-out') {
         const rows = (AppState.borrows || []).filter(b => b.status === 'pending');
         tbody.innerHTML = rows.length === 0
-            ? '<tr><td colspan="8" style="text-align:center">暂无待出库借用申请</td></tr>'
+            ? '<tr><td colspan="8" style="text-align:center">暂无待审批的借用申请</td></tr>'
             : rows.map(b => `
                 <tr>
                     <td>${b.borrow_no}</td>
-                    <td><span class="badge-type out">待出库</span></td>
+                    <td><span class="badge-type out">借用待审批</span></td>
                     <td>${b.material_name || '-'}</td>
                     <td>-${b.quantity}</td>
                     <td>${b.borrower_name || '-'}</td>
