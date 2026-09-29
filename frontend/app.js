@@ -1675,7 +1675,44 @@ function formatTrendLabel(value) {
 function viewMaterial(id) {
     const material = AppState.materials?.find(m => m.id === id);
     if (!material) return;
-    showNotification('物料详情', `${material.name}，库存 ${material.stock}${material.unit}，预警阈值 ${material.threshold}${material.unit}`, 'info');
+    const catName = (AppState.categories || []).find(c => c.id === material.category_id)?.name || '-';
+    const fields = [
+        ['物料编号', material.code || '-'],
+        ['物料名称', material.name || '-'],
+        ['分类', catName],
+        ['规格型号', material.spec || '-'],
+        ['在库数量', `${material.stock ?? 0} ${material.unit || ''}`],
+        ['预警阈值', `${material.threshold ?? 0} ${material.unit || ''}`],
+        ['存放位置', material.location || '-'],
+        { label: '备注', value: material.remark || '-', full: true }
+    ];
+    // 效期批次区：展示每个批次的到期时间与剩余天数
+    const batches = material.batches || [];
+    if (batches.length > 0) {
+        const unit = material.unit || '';
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const batchHtml = batches.map(b => {
+            let expiryCell = '无到期信息';
+            if (b.expiry_date) {
+                const exp = new Date(b.expiry_date + 'T00:00:00');
+                const days = Math.round((exp - today) / 86400000);
+                let tag, color;
+                if (days < 0) { tag = `已过期 ${-days} 天`; color = '#ef4444'; }
+                else if (days === 0) { tag = '今日到期'; color = '#ef4444'; }
+                else if (days <= 30) { tag = `剩 ${days} 天`; color = '#f59e0b'; }
+                else { tag = `剩 ${days} 天`; color = '#10b981'; }
+                expiryCell = `${b.expiry_date} <span style="margin-left:6px;padding:1px 8px;border-radius:10px;font-size:12px;color:#fff;background:${color}">${tag}</span>`;
+            }
+            return `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:8px;background:var(--bg-secondary,#f8fafc);font-size:13px;">
+                    <div style="font-weight:600;">${b.batch_no || '-'}</div>
+                    <div style="color:var(--text-secondary,#64748b);">剩余 <b>${b.quantity_remaining ?? 0}</b> ${unit} · 生产 ${b.production_date || '-'}</div>
+                    <div>${expiryCell}</div>
+                </div>`;
+        }).join('');
+        fields.push({ label: `效期批次（${batches.length} 个）`, value: `<div style="display:flex;flex-direction:column;gap:6px;width:100%;">${batchHtml}</div>`, full: true });
+    }
+    showDetailModal(`物料详情 - ${material.name}`, fields);
 }
 
 async function handleMaterialSave() {
