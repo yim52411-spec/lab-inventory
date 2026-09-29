@@ -1190,6 +1190,10 @@ window.openPurchaseLink = openPurchaseLink;
 window.approvePurchase = approvePurchase;
 window.completePurchase = completePurchase;
 window.approveBorrow = approveBorrow;
+window.openAddMaterialModal = openAddMaterialModal;
+window.toggleInitialBatchFields = toggleInitialBatchFields;
+window.resetInitialBatchFields = resetInitialBatchFields;
+window.confirmScrap = confirmScrap;
 
 /**
  * 更新物料表格
@@ -1432,7 +1436,15 @@ function updateInventoryTrend() {
             value: runningTotal,
             detail: `${r.material_name || '-'} / ${r.type_name || r.type || ''}`
         };
-        runningTotal -= Number(r.quantity || 0);
+        // 回溯到该记录之前：总库存减去此记录的净变化（优先用操作前后的库存差，兼容调整/报废等所有类型）
+        let net;
+        if (r.stock_before != null && r.stock_after != null) {
+            net = Number(r.stock_after) - Number(r.stock_before);
+        } else {
+            const type = String(r.type || '');
+            net = ['out', 'borrow', 'scrap'].includes(type) ? -Number(r.quantity || 0) : Number(r.quantity || 0);
+        }
+        if (Number.isFinite(net)) runningTotal -= net;
         return point;
     }).reverse();
 
@@ -1536,7 +1548,8 @@ function renderTrendChart(container, config) {
     const rawMin = Math.min(...allValues, 0);
     const niceStep = rawMax <= 5 ? 1 : Math.pow(10, Math.floor(Math.log10(rawMax))) / 2;
     const maxValue = Math.ceil(rawMax / niceStep) * niceStep;
-    const minValue = rawMin > 0 ? Math.floor(rawMin / niceStep) * niceStep : 0;
+    // 负值向下取整到刻度，确保负值数据点也落在坐标区内
+    const minValue = Math.floor(rawMin / niceStep) * niceStep;
     const range = Math.max(maxValue - minValue, 1);
     const ticks = Array.from({ length: 5 }, (_, i) => minValue + (range * i) / 4);
 
@@ -1650,7 +1663,13 @@ function formatMoney(value) {
 function formatTrendLabel(value) {
     if (!value) return '-';
     const parts = String(value).split(' ');
-    return parts.length > 1 ? parts[1].slice(0, 5) : parts[0].slice(5);
+    if (parts.length > 1) {
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        // 今天的记录显示时分，更早的显示月-日，避免跨日记录看起来乱序
+        return parts[0] === todayStr ? parts[1].slice(0, 5) : parts[0].slice(5);
+    }
+    return parts[0].slice(5);
 }
 
 function viewMaterial(id) {
