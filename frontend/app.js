@@ -1757,7 +1757,11 @@ async function handleMaterialImport(event) {
             location: valueOf(row, ['存放位置', '地区', 'location']),
             remark: valueOf(row, ['备注', 'remark']),
             purchase_date: valueOf(row, ['申购日期', '采购日期', 'purchase_date']),
-            arrival_date: valueOf(row, ['采购到位日期', '到货日期', 'arrival_date'])
+            arrival_date: valueOf(row, ['采购到位日期', '到货日期', 'arrival_date']),
+            production_date: valueOf(row, ['生产日期', 'production_date']),
+            expiry_date: valueOf(row, ['有效期', '有效期至', '到期日期', 'expiry_date']),
+            shelf_life_days: valueOf(row, ['保质期天数', 'shelf_life_days']),
+            batch_no: valueOf(row, ['批次号', 'batch_no'])
         }));
 
         const result = await API.Material.import(items);

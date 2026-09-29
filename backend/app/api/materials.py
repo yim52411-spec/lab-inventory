@@ -4,13 +4,14 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from sqlalchemy import or_, and_
-from datetime import datetime
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 import re
 from app import db
 from app.models import Material, Category, Supplier, OperationRecord
 from app.api.auth import admin_required, get_current_user_id
 from app.api.alerts import sync_material_alert
+from app.api.inventory import create_batch
 from app.utils.helpers import generate_code, paginate
 
 materials_bp = Blueprint('materials', __name__)
@@ -220,6 +221,7 @@ def import_materials():
 
     imported = []
     skipped = []
+    batches_created = 0
 
     def text(value):
         return str(value or '').strip()
@@ -241,6 +243,13 @@ def import_materials():
         value = text(value).replace('/', '.').replace('-', '.')
         if not value or value == '.':
             return None
+        # Excel 日期序列数支持（如 45123）
+        try:
+            serial = float(value)
+            if 4000 < serial < 80000:
+                return datetime(1899, 12, 30) + timedelta(days=int(serial))
+        except (TypeError, ValueError):
+            pass
         for fmt in ('%Y.%m.%d', '%Y.%m.%d %H:%M:%S', '%Y.%m.%d %H:%M'):
             try:
                 return datetime.strptime(value, fmt)
@@ -274,6 +283,15 @@ def import_materials():
         date_note = ''
         if operation_date:
             date_note = f"入库日期: {operation_date.strftime('%Y-%m-%d')}" + ('（采购到位日期为空，使用申购日期）' if not arrival_date and purchase_date else '')
+
+        # 可选批次/效期信息：填了有效期/保质期/批次号才建批次，否则跳过（不涉及效期管控的物品无需逐个录入）
+        batch_data = {
+            'batch_no': text(row.get('batch_no') or row.get('批次号')) or None,
+            'production_date': text(row.get('production_date') or row.get('生产日期')) or None,
+            'expiry_date': text(row.get('expiry_date') or row.get('有效期') or row.get('有效期至') or row.get('到期日期')) or None,
+            'shelf_life_days': text(row.get('shelf_life_days') or row.get('保质期天数')) or None,
+        }
+        create_batch_for_row = bool(batch_data['batch_no'] or batch_data['expiry_date'] or batch_data['shelf_life_days'])
 
         matched = None
         match_type = 'unmatched'
@@ -336,6 +354,14 @@ def import_materials():
                 created_at=operation_date
             )
             db.session.add(record)
+            if create_batch_for_row:
+                try:
+                    create_batch(matched, batch_data, quantity, received_at=operation_date)
+                    batches_created += 1
+                except (ValueError, TypeError):
+                    db.session.rollback()
+                    skipped.append({'row': index, 'reason': '批次信息无效（检查保质期天数/日期格式）'})
+                    continue
             imported.append({'row': index, 'action': 'merge', 'match_type': match_type, 'material': matched.to_dict()})
             continue
 
@@ -359,14 +385,23 @@ def import_materials():
         material.update_status()
         db.session.add(material)
         db.session.flush()
+        if create_batch_for_row:
+            try:
+                create_batch(material, batch_data, quantity, received_at=operation_date)
+                batches_created += 1
+            except (ValueError, TypeError):
+                db.session.rollback()
+                skipped.append({'row': index, 'reason': '批次信息无效（检查保质期天数/日期格式）'})
+                continue
         existing_materials.append(material)
         imported.append({'row': index, 'action': 'create_incomplete' if incomplete else 'create', 'match_type': '未匹配，已建立新物料', 'material': material.to_dict()})
 
     db.session.commit()
 
+    batch_note = f'；已创建批次 {batches_created} 条并纳入到期预警' if batches_created else ''
     return jsonify({
         'success': True,
-        'message': f'成功处理 {len(imported)} 条，跳过 {len(skipped)} 条；已匹配库存会自动叠加',
+        'message': f'成功处理 {len(imported)} 条，跳过 {len(skipped)} 条；已匹配库存会自动叠加{batch_note}',
         'data': {
             'imported': imported,
             'skipped': skipped
