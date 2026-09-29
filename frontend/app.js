@@ -1838,6 +1838,7 @@ function editMaterial(id) {
         document.getElementById('material-unit').value = material.unit || '个';
         document.getElementById('material-location').value = material.location || '';
         document.getElementById('material-remark').value = material.remark || '';
+        resetInitialBatchFields();
         showModal('add-material-modal');
     }
 }
@@ -2541,16 +2542,56 @@ function updateAlertsTable() {
 }
 
 /**
- * 标记到期预警为已处理（管理员）。
- * 适用场景：过期批次已报废/不再占用库存。如需同步修正库存，请先做出库。
+ * 标记到期预警为已处理（管理员）——打开报废处理弹窗，填写原因/处理方式。
  */
-async function resolveAlert(id) {
+function resolveAlert(id) {
     if (!requireAdminAction()) return;
-    if (!confirm('确定该批次按过期报废处理吗？\n报废后：批次剩余数量将从当前库存中扣减，并写入出库记录留档（备份导出可查），预警不再提示。')) return;
+    const alert = (AppState.alerts || []).find(a => a.id === id);
+    if (!alert) return;
+    AppState.scrappingAlertId = id;
+    const fields = [
+        { label: '物料', value: alert.material_name },
+        { label: '批次号', value: alert.batch_no || '-' },
+        { label: '批次剩余数量', value: `${alert.current_stock}（将从库存中扣减）` },
+        { label: '到期日期', value: alert.expiry_date || '-', full: true }
+    ];
+    document.getElementById('scrap-modal-info').innerHTML = fields.map(f => `
+        <div class="detail-item${f.full ? ' full-width' : ''}">
+            <div class="detail-label">${f.label}</div>
+            <div class="detail-value">${(f.value ?? null) !== null && f.value !== '' && f.value !== undefined ? f.value : '-'}</div>
+        </div>
+    `).join('');
+    document.getElementById('scrap-form').reset();
+    showModal('scrap-modal');
+}
+
+/**
+ * 确认报废：收集原因/处理方式/备注并提交。
+ */
+async function confirmScrap() {
+    const id = AppState.scrappingAlertId;
+    if (!id) return;
+    const reasonType = document.getElementById('scrap-reason-type').value;
+    const handling = document.getElementById('scrap-handling').value;
+    const custom = document.getElementById('scrap-custom').value.trim();
+    const remark = document.getElementById('scrap-remark').value.trim();
+
+    const body = {
+        reason: reasonType === '其他' ? (custom || '其他') : reasonType,
+        handling: handling === '其他' ? (custom || '其他') : handling,
+        remark: remark || undefined
+    };
+    if ((reasonType === '其他' || handling === '其他') && !custom) {
+        showNotification('提示', '选了"其他"请填写自定义说明', 'warning');
+        return;
+    }
+
     try {
-        const result = await API.Alert.resolve(id);
+        const result = await API.Alert.resolve(id, body);
         if (result.success) {
             showNotification('成功', result.message || '预警已标记为已解决', 'success');
+            AppState.scrappingAlertId = null;
+            closeAllModals();
             await loadAlertsData();
         } else {
             showNotification('失败', result.message || '操作失败', 'error');
