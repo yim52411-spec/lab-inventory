@@ -1190,6 +1190,10 @@ window.openPurchaseLink = openPurchaseLink;
 window.approvePurchase = approvePurchase;
 window.completePurchase = completePurchase;
 window.approveBorrow = approveBorrow;
+window.openAddMaterialModal = openAddMaterialModal;
+window.toggleInitialBatchFields = toggleInitialBatchFields;
+window.resetInitialBatchFields = resetInitialBatchFields;
+window.confirmScrap = confirmScrap;
 
 /**
  * 更新物料表格
@@ -1432,7 +1436,15 @@ function updateInventoryTrend() {
             value: runningTotal,
             detail: `${r.material_name || '-'} / ${r.type_name || r.type || ''}`
         };
-        runningTotal -= Number(r.quantity || 0);
+        // 回溯到该记录之前：总库存减去此记录的净变化（优先用操作前后的库存差，兼容调整/报废等所有类型）
+        let net;
+        if (r.stock_before != null && r.stock_after != null) {
+            net = Number(r.stock_after) - Number(r.stock_before);
+        } else {
+            const type = String(r.type || '');
+            net = ['out', 'borrow', 'scrap'].includes(type) ? -Number(r.quantity || 0) : Number(r.quantity || 0);
+        }
+        if (Number.isFinite(net)) runningTotal -= net;
         return point;
     }).reverse();
 
@@ -1536,7 +1548,8 @@ function renderTrendChart(container, config) {
     const rawMin = Math.min(...allValues, 0);
     const niceStep = rawMax <= 5 ? 1 : Math.pow(10, Math.floor(Math.log10(rawMax))) / 2;
     const maxValue = Math.ceil(rawMax / niceStep) * niceStep;
-    const minValue = rawMin > 0 ? Math.floor(rawMin / niceStep) * niceStep : 0;
+    // 负值向下取整到刻度，确保负值数据点也落在坐标区内
+    const minValue = Math.floor(rawMin / niceStep) * niceStep;
     const range = Math.max(maxValue - minValue, 1);
     const ticks = Array.from({ length: 5 }, (_, i) => minValue + (range * i) / 4);
 
@@ -1650,13 +1663,56 @@ function formatMoney(value) {
 function formatTrendLabel(value) {
     if (!value) return '-';
     const parts = String(value).split(' ');
-    return parts.length > 1 ? parts[1].slice(0, 5) : parts[0].slice(5);
+    if (parts.length > 1) {
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        // 今天的记录显示时分，更早的显示月-日，避免跨日记录看起来乱序
+        return parts[0] === todayStr ? parts[1].slice(0, 5) : parts[0].slice(5);
+    }
+    return parts[0].slice(5);
 }
 
 function viewMaterial(id) {
     const material = AppState.materials?.find(m => m.id === id);
     if (!material) return;
-    showNotification('物料详情', `${material.name}，库存 ${material.stock}${material.unit}，预警阈值 ${material.threshold}${material.unit}`, 'info');
+    const catName = (AppState.categories || []).find(c => c.id === material.category_id)?.name || '-';
+    const fields = [
+        ['物料编号', material.code || '-'],
+        ['物料名称', material.name || '-'],
+        ['分类', catName],
+        ['规格型号', material.spec || '-'],
+        ['在库数量', `${material.stock ?? 0} ${material.unit || ''}`],
+        ['预警阈值', `${material.threshold ?? 0} ${material.unit || ''}`],
+        ['存放位置', material.location || '-'],
+        { label: '备注', value: material.remark || '-', full: true }
+    ];
+    // 效期批次区：展示每个批次的到期时间与剩余天数
+    const batches = material.batches || [];
+    if (batches.length > 0) {
+        const unit = material.unit || '';
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const batchHtml = batches.map(b => {
+            let expiryCell = '无到期信息';
+            if (b.expiry_date) {
+                const exp = new Date(b.expiry_date + 'T00:00:00');
+                const days = Math.round((exp - today) / 86400000);
+                let tag, color;
+                if (days < 0) { tag = `已过期 ${-days} 天`; color = '#ef4444'; }
+                else if (days === 0) { tag = '今日到期'; color = '#ef4444'; }
+                else if (days <= 30) { tag = `剩 ${days} 天`; color = '#f59e0b'; }
+                else { tag = `剩 ${days} 天`; color = '#10b981'; }
+                expiryCell = `${b.expiry_date} <span style="margin-left:6px;padding:1px 8px;border-radius:10px;font-size:12px;color:#fff;background:${color}">${tag}</span>`;
+            }
+            return `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:8px;background:var(--bg-secondary,#f8fafc);font-size:13px;">
+                    <div style="font-weight:600;">${b.batch_no || '-'}</div>
+                    <div style="color:var(--text-secondary,#64748b);">剩余 <b>${b.quantity_remaining ?? 0}</b> ${unit} · 生产 ${b.production_date || '-'}</div>
+                    <div>${expiryCell}</div>
+                </div>`;
+        }).join('');
+        fields.push({ label: `效期批次（${batches.length} 个）`, value: `<div style="display:flex;flex-direction:column;gap:6px;width:100%;">${batchHtml}</div>`, full: true });
+    }
+    showDetailModal(`物料详情 - ${material.name}`, fields);
 }
 
 async function handleMaterialSave() {
@@ -1680,6 +1736,20 @@ async function handleMaterialSave() {
         return;
     }
 
+    // 首批库存效期（仅新增且勾选时；编辑模式不支持改批次）
+    const batchToggle = document.getElementById('material-initial-batch-toggle');
+    if (!AppState.editingMaterialId && batchToggle && batchToggle.checked && payload.stock > 0) {
+        const initialBatch = {
+            production_date: document.getElementById('material-production-date').value || undefined,
+            expiry_date: document.getElementById('material-expiry-date').value || undefined,
+            shelf_life_days: document.getElementById('material-shelf-life-days').value || undefined,
+            batch_no: document.getElementById('material-batch-no').value.trim() || undefined
+        };
+        if (initialBatch.expiry_date || initialBatch.shelf_life_days || initialBatch.batch_no) {
+            payload.initial_batch = initialBatch;
+        }
+    }
+
     try {
         const result = AppState.editingMaterialId
             ? await API.Material.update(AppState.editingMaterialId, payload)
@@ -1688,6 +1758,7 @@ async function handleMaterialSave() {
             showNotification('成功', AppState.editingMaterialId ? '物料已更新' : '物料已新增', 'success');
             AppState.editingMaterialId = null;
             document.getElementById('material-form').reset();
+            resetInitialBatchFields();
             closeAllModals();
             await loadMaterialsData();
             await loadAlertsData();
@@ -1757,7 +1828,11 @@ async function handleMaterialImport(event) {
             location: valueOf(row, ['存放位置', '地区', 'location']),
             remark: valueOf(row, ['备注', 'remark']),
             purchase_date: valueOf(row, ['申购日期', '采购日期', 'purchase_date']),
-            arrival_date: valueOf(row, ['采购到位日期', '到货日期', 'arrival_date'])
+            arrival_date: valueOf(row, ['采购到位日期', '到货日期', 'arrival_date']),
+            production_date: valueOf(row, ['生产日期', 'production_date']),
+            expiry_date: valueOf(row, ['有效期', '有效期至', '到期日期', 'expiry_date']),
+            shelf_life_days: valueOf(row, ['保质期天数', 'shelf_life_days']),
+            batch_no: valueOf(row, ['批次号', 'batch_no'])
         }));
 
         const result = await API.Material.import(items);
@@ -1773,6 +1848,33 @@ async function handleMaterialImport(event) {
     } finally {
         event.target.value = '';
     }
+}
+
+/**
+ * 首批库存效期信息 - 显隐切换与重置
+ */
+function toggleInitialBatchFields(checked) {
+    document.getElementById('material-initial-batch-fields').style.display = checked ? '' : 'none';
+}
+
+function resetInitialBatchFields() {
+    const toggle = document.getElementById('material-initial-batch-toggle');
+    const fields = document.getElementById('material-initial-batch-fields');
+    if (toggle) toggle.checked = false;
+    if (fields) {
+        fields.style.display = 'none';
+        fields.querySelectorAll('input').forEach(input => { input.value = ''; });
+    }
+}
+
+/**
+ * 打开新增物料弹窗（重置编辑状态与首批效期区）
+ */
+function openAddMaterialModal() {
+    if (!requireAdminAction()) return;
+    AppState.editingMaterialId = null;
+    resetInitialBatchFields();
+    showModal('add-material-modal');
 }
 
 /**
@@ -1792,6 +1894,7 @@ function editMaterial(id) {
         document.getElementById('material-unit').value = material.unit || '个';
         document.getElementById('material-location').value = material.location || '';
         document.getElementById('material-remark').value = material.remark || '';
+        resetInitialBatchFields();
         showModal('add-material-modal');
     }
 }
@@ -2495,16 +2598,56 @@ function updateAlertsTable() {
 }
 
 /**
- * 标记到期预警为已处理（管理员）。
- * 适用场景：过期批次已报废/不再占用库存。如需同步修正库存，请先做出库。
+ * 标记到期预警为已处理（管理员）——打开报废处理弹窗，填写原因/处理方式。
  */
-async function resolveAlert(id) {
+function resolveAlert(id) {
     if (!requireAdminAction()) return;
-    if (!confirm('确定该批次按过期报废处理吗？\n报废后：批次剩余数量将从当前库存中扣减，并写入出库记录留档（备份导出可查），预警不再提示。')) return;
+    const alert = (AppState.alerts || []).find(a => a.id === id);
+    if (!alert) return;
+    AppState.scrappingAlertId = id;
+    const fields = [
+        { label: '物料', value: alert.material_name },
+        { label: '批次号', value: alert.batch_no || '-' },
+        { label: '批次剩余数量', value: `${alert.current_stock}（将从库存中扣减）` },
+        { label: '到期日期', value: alert.expiry_date || '-', full: true }
+    ];
+    document.getElementById('scrap-modal-info').innerHTML = fields.map(f => `
+        <div class="detail-item${f.full ? ' full-width' : ''}">
+            <div class="detail-label">${f.label}</div>
+            <div class="detail-value">${(f.value ?? null) !== null && f.value !== '' && f.value !== undefined ? f.value : '-'}</div>
+        </div>
+    `).join('');
+    document.getElementById('scrap-form').reset();
+    showModal('scrap-modal');
+}
+
+/**
+ * 确认报废：收集原因/处理方式/备注并提交。
+ */
+async function confirmScrap() {
+    const id = AppState.scrappingAlertId;
+    if (!id) return;
+    const reasonType = document.getElementById('scrap-reason-type').value;
+    const handling = document.getElementById('scrap-handling').value;
+    const custom = document.getElementById('scrap-custom').value.trim();
+    const remark = document.getElementById('scrap-remark').value.trim();
+
+    const body = {
+        reason: reasonType === '其他' ? (custom || '其他') : reasonType,
+        handling: handling === '其他' ? (custom || '其他') : handling,
+        remark: remark || undefined
+    };
+    if ((reasonType === '其他' || handling === '其他') && !custom) {
+        showNotification('提示', '选了"其他"请填写自定义说明', 'warning');
+        return;
+    }
+
     try {
-        const result = await API.Alert.resolve(id);
+        const result = await API.Alert.resolve(id, body);
         if (result.success) {
             showNotification('成功', result.message || '预警已标记为已解决', 'success');
+            AppState.scrappingAlertId = null;
+            closeAllModals();
             await loadAlertsData();
         } else {
             showNotification('失败', result.message || '操作失败', 'error');

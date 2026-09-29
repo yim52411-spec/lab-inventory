@@ -363,8 +363,11 @@ const AlertAPI = {
     },
 
     // 标记预警已处理（管理员）
-    async resolve(id) {
-        return await apiRequest(`/alerts/${id}/resolve`, { method: 'POST' });
+    async resolve(id, body = null) {
+        return await apiRequest(`/alerts/${id}/resolve`, {
+            method: 'POST',
+            ...(body ? { body: JSON.stringify(body) } : {})
+        });
     }
 };
 

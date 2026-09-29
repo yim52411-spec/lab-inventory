@@ -311,6 +311,7 @@ def resolve_alert(id):
     库存预警（stock_low）：仅标记解决，不涉及库存变动。
     """
     alert = Alert.query.get_or_404(id)
+    data = request.get_json(silent=True) or {}
 
     alert.is_resolved = True
     alert.resolved_at = datetime.utcnow()
@@ -324,6 +325,17 @@ def resolve_alert(id):
         material.update_status()
         sync_material_alert(material)
         batch.quantity_remaining = 0
+        # 报废原因/处理方式/备注（可选，向后兼容：不传时用默认文案）
+        reason = str(data.get('reason') or '').strip()
+        handling = str(data.get('handling') or '').strip()
+        remark_extra = str(data.get('remark') or '').strip()
+        scrap_note = f'过期报废: 批次{batch.batch_no}'
+        if reason:
+            scrap_note += f'；原因: {reason}'
+        if handling:
+            scrap_note += f'；处理: {handling}'
+        if remark_extra:
+            scrap_note += f'；备注: {remark_extra}'
         record = OperationRecord(
             operation_no=generate_code('O'),
             type='scrap',
@@ -335,7 +347,7 @@ def resolve_alert(id):
             stock_after=material.stock,
             related_id=batch.id,
             related_type='batch',
-            remark=f'过期报废: 批次{batch.batch_no}'
+            remark=scrap_note
         )
         db.session.add(record)
 
