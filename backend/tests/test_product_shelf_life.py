@@ -107,6 +107,33 @@ class ProductShelfLifeTestCase(unittest.TestCase):
             self.assertEqual(MaterialBatch.query.filter_by(batch_no='OLD').one().quantity_remaining, 0)
             self.assertEqual(MaterialBatch.query.filter_by(batch_no='NEW').one().quantity_remaining, 4)
 
+    def test_stock_out_saves_recipient_in_remark(self):
+        with self.app.app_context():
+            material = db.session.get(Material, self.material_id)
+            material.stock = 5
+            db.session.commit()
+        response = self.client.post('/api/inventory/out', headers=self.headers, json={
+            'material_id': self.material_id, 'quantity': 2,
+            'recipient': '张三', 'remark': '项目使用'
+        })
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            record = OperationRecord.query.filter_by(type='out').one()
+            self.assertEqual(record.remark, '借用人: 张三；项目使用')
+
+    def test_stock_out_without_recipient_keeps_remark(self):
+        with self.app.app_context():
+            material = db.session.get(Material, self.material_id)
+            material.stock = 5
+            db.session.commit()
+        response = self.client.post('/api/inventory/out', headers=self.headers, json={
+            'material_id': self.material_id, 'quantity': 1, 'remark': '常规领用'
+        })
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            record = OperationRecord.query.filter_by(type='out').one()
+            self.assertEqual(record.remark, '常规领用')
+
     def test_history_keyword_search(self):
         with self.app.app_context():
             db.session.add(OperationRecord(operation_no='I-1', type='in', user_id=self.user_id,
