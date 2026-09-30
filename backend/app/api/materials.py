@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 import re
 from app import db
-from app.models import Material, Category, Supplier, OperationRecord
+from app.models import Material, Category, Supplier, OperationRecord, MaterialBatch
 from app.api.auth import admin_required, get_current_user_id
 from app.api.alerts import sync_material_alert
 from app.api.inventory import create_batch
@@ -185,12 +185,38 @@ def update_material(id):
     
     # 更新状态
     material.update_status()
-    
+
+    # 补录首批效期（仅当物料尚无批次时生效；已有批次请通过入库分批维护）
+    initial_batch = data.get('initial_batch')
+    batch_created = False
+    if isinstance(initial_batch, dict) and (initial_batch.get('expiry_date') or initial_batch.get('shelf_life_days') or initial_batch.get('batch_no')):
+        if MaterialBatch.query.filter_by(material_id=material.id).count() > 0:
+            return jsonify({'success': False, 'message': '该物料已存在效期批次，请通过入库添加新批次'}), 400
+        if material.stock <= 0:
+            return jsonify({'success': False, 'message': '库存为 0，无需补录首批效期'}), 400
+        try:
+            create_batch(material, initial_batch, material.stock)
+            batch_created = True
+            record = OperationRecord(
+                operation_no=generate_code('I'), type='in', user_id=get_current_user_id(),
+                material_id=material.id, material_name=material.name, quantity=material.stock,
+                stock_before=material.stock, stock_after=material.stock,
+                related_type='initial_batch', remark='编辑物料补录首批效期'
+            )
+            db.session.add(record)
+            sync_material_alert(material)
+        except (ValueError, TypeError) as exc:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': f'首批效期信息无效: {exc}'}), 400
+
     db.session.commit()
-    
+
+    message = '物料更新成功'
+    if batch_created:
+        message = '物料更新成功，首批批次已创建并纳入到期预警'
     return jsonify({
         'success': True,
-        'message': '物料更新成功',
+        'message': message,
         'data': material.to_dict()
     })
 
@@ -291,6 +317,18 @@ def import_materials():
             digits = ''.join(ch for ch in str(value) if ch.isdigit())
             return int(digits) if digits else default
 
+    def normalise_batch_date(value):
+        """批次日期归一化：Excel 序列数/点分隔等格式统一转为 ISO 日期。
+
+        与单次新增物料走同一 create_batch 入口，保证两条路径解析一致；
+        无法识别的非空原样返回，沿用既有校验与跳过行为。
+        """
+        raw = text(value)
+        if not raw:
+            return None
+        parsed = parse_date(raw)
+        return parsed.date().isoformat() if parsed else raw
+
     existing_materials = Material.query.all()
     existing_categories = Category.query.all()
     for index, row in enumerate(rows, start=1):
@@ -312,8 +350,8 @@ def import_materials():
         # 可选批次/效期信息：填了有效期/保质期/批次号才建批次，否则跳过（不涉及效期管控的物品无需逐个录入）
         batch_data = {
             'batch_no': text(row.get('batch_no') or row.get('批次号')) or None,
-            'production_date': text(row.get('production_date') or row.get('生产日期')) or None,
-            'expiry_date': text(row.get('expiry_date') or row.get('有效期') or row.get('有效期至') or row.get('到期日期')) or None,
+            'production_date': normalise_batch_date(row.get('production_date') or row.get('生产日期')),
+            'expiry_date': normalise_batch_date(row.get('expiry_date') or row.get('有效期') or row.get('有效期至') or row.get('到期日期')),
             'shelf_life_days': text(row.get('shelf_life_days') or row.get('保质期天数')) or None,
         }
         create_batch_for_row = bool(batch_data['batch_no'] or batch_data['expiry_date'] or batch_data['shelf_life_days'])

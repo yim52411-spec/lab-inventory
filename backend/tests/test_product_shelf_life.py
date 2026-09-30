@@ -134,6 +134,55 @@ class ProductShelfLifeTestCase(unittest.TestCase):
             record = OperationRecord.query.filter_by(type='out').one()
             self.assertEqual(record.remark, '常规领用')
 
+    def test_update_material_initial_batch_creates_batch(self):
+        with self.app.app_context():
+            material = db.session.get(Material, self.material_id)
+            material.stock = 5
+            db.session.commit()
+        response = self.client.put(f'/api/materials/{self.material_id}', headers=self.headers, json={
+            'initial_batch': {
+                'production_date': '2026-01-01',
+                'expiry_date': (date.today() + timedelta(days=20)).isoformat()
+            }
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('首批批次已创建', response.get_json()['message'])
+        with self.app.app_context():
+            batch = MaterialBatch.query.one()
+            self.assertEqual(batch.quantity_remaining, 5)
+            self.assertEqual(
+                Alert.query.filter_by(alert_type='expiry', batch_id=batch.id).count(), 1)
+            record = OperationRecord.query.filter_by(related_type='initial_batch').one()
+            self.assertEqual(record.remark, '编辑物料补录首批效期')
+
+    def test_update_material_rejects_initial_batch_when_batches_exist(self):
+        with self.app.app_context():
+            material = db.session.get(Material, self.material_id)
+            material.stock = 5
+            db.session.add(MaterialBatch(material=material, batch_no='EXISTS', received_at=datetime.utcnow(),
+                                         quantity_received=5, quantity_remaining=5))
+            db.session.commit()
+        response = self.client.put(f'/api/materials/{self.material_id}', headers=self.headers, json={
+            'initial_batch': {'expiry_date': '2026-12-31'}
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('已存在效期批次', response.get_json()['message'])
+
+    def test_import_materials_normalises_excel_serial_dates(self):
+        serial_expiry = (date(2027, 6, 30) - date(1899, 12, 30)).days
+        response = self.client.post('/api/materials/import', headers=self.headers, json={
+            'items': [{
+                'name': 'Excel物料', 'code': 'M-EXCEL-1', 'stock': 3,
+                'production_date': 45000, 'expiry_date': str(serial_expiry),
+            }]
+        })
+        self.assertEqual(response.status_code, 200, response.get_json())
+        with self.app.app_context():
+            batch = MaterialBatch.query.one()
+            self.assertEqual(batch.production_date, date(1899, 12, 30) + timedelta(days=45000))
+            self.assertEqual(batch.expiry_date, date(2027, 6, 30))
+            self.assertEqual(batch.quantity_remaining, 3)
+
     def test_history_keyword_search(self):
         with self.app.app_context():
             db.session.add(OperationRecord(operation_no='I-1', type='in', user_id=self.user_id,
