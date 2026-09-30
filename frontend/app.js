@@ -1736,9 +1736,9 @@ async function handleMaterialSave() {
         return;
     }
 
-    // 首批库存效期（仅新增且勾选时；编辑模式不支持改批次）
+    // 首批库存效期（新增或编辑无批次物料时填写；已有批次物料后端会明确报错提示走入库）
     const batchToggle = document.getElementById('material-initial-batch-toggle');
-    if (!AppState.editingMaterialId && batchToggle && batchToggle.checked && payload.stock > 0) {
+    if (batchToggle && batchToggle.checked && payload.stock > 0) {
         const initialBatch = {
             production_date: document.getElementById('material-production-date').value || undefined,
             expiry_date: document.getElementById('material-expiry-date').value || undefined,
