@@ -143,10 +143,10 @@ def send_pending_alert_emails():
     subject = f'【库存预警】{len(unsent_alerts)} 条物料预警通知'
     body = '<h2>库存预警通知</h2><table border="1" cellpadding="10">'
     body += '<tr><th>物料编号</th><th>物料名称</th><th>批次</th><th>剩余库存</th><th>到期日期</th><th>类型</th><th>级别</th></tr>'
+    alert_ids = []
     for alert in unsent_alerts:
         material = alert.material
-        alert.is_sent = True
-        alert.sent_at = datetime.utcnow()
+        alert_ids.append(alert.id)
         body += (
             f'<tr><td>{material.code}</td><td>{material.name}</td>'
             f'<td>{alert.batch.batch_no if alert.batch else "-"}</td>'
@@ -156,10 +156,19 @@ def send_pending_alert_emails():
             f'<td>{alert.level}</td></tr>'
         )
     body += '</table><p>请登录系统查看详情并及时处理。</p>'
+    # 先结束读事务释放数据库锁，避免 SMTP 连接超时期间长时间持锁
+    # 阻塞其他写入（SQLite 为整库锁，会出现 database is locked）。
+    db.session.commit()
     try:
         mail.send(Message(subject=subject, recipients=recipients, html=body))
+        # 发送成功后再按 id 重新查询标记，跳过发送期间已被处理/删除的预警
+        for alert_id in alert_ids:
+            alert = db.session.get(Alert, alert_id)
+            if alert and not alert.is_resolved and not alert.is_sent:
+                alert.is_sent = True
+                alert.sent_at = datetime.utcnow()
         db.session.commit()
-        return len(unsent_alerts)
+        return len(alert_ids)
     except Exception:
         db.session.rollback()
         current_app.logger.exception('预警邮件发送失败')

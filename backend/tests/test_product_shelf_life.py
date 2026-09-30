@@ -183,6 +183,28 @@ class ProductShelfLifeTestCase(unittest.TestCase):
             self.assertEqual(batch.expiry_date, date(2027, 6, 30))
             self.assertEqual(batch.quantity_remaining, 3)
 
+    def test_mail_success_marks_alerts_sent_and_skips_resolved(self):
+        with self.app.app_context():
+            admin = db.session.get(User, self.user_id)
+            admin.email = 'admin@test.com'
+            material = db.session.get(Material, self.material_id)
+            batch = MaterialBatch(material=material, batch_no='SEND', received_at=datetime.utcnow(),
+                                  expiry_date=date.today(), quantity_received=2, quantity_remaining=2)
+            db.session.add(batch)
+            db.session.flush()
+            sync_batch_expiry_alert(batch)
+            db.session.commit()
+            self.app.config.update(MAIL_SERVER='smtp.test', MAIL_USERNAME='u', MAIL_PASSWORD='p',
+                                   MAIL_DEFAULT_SENDER='u@test', ALERT_EMAIL_ENABLED=True)
+            from app.api.alerts import send_pending_alert_emails
+            from unittest.mock import patch
+            with patch('app.api.alerts.mail.send') as mock_send:
+                sent = send_pending_alert_emails()
+            self.assertEqual(sent, 1)
+            mock_send.assert_called_once()
+            with self.app.app_context():
+                self.assertTrue(Alert.query.one().is_sent)
+
     def test_history_keyword_search(self):
         with self.app.app_context():
             db.session.add(OperationRecord(operation_no='I-1', type='in', user_id=self.user_id,
